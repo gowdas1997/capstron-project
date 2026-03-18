@@ -1,8 +1,11 @@
-const express = require('express');
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
-const router  = express.Router();
+const express  = require('express');
+const multer   = require('multer');
+const path     = require('path');
+const fs       = require('fs');
+const { PubSub } = require('@google-cloud/pubsub');
+const router   = express.Router();
+
+const pubsub = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
 
 const uploadDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -29,7 +32,7 @@ const upload = multer({
 
 const fileRecords = [];
 
-router.post('/upload', upload.single('file'), (req, res) => {
+router.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded.' });
   }
@@ -44,6 +47,14 @@ router.post('/upload', upload.single('file'), (req, res) => {
 
   fileRecords.push(record);
   console.log(`[Capstron] Uploaded: ${record.fileName}`);
+
+  try {
+    const dataBuffer = Buffer.from(JSON.stringify(record));
+    const msgId = await pubsub.topic('file-uploaded').publish(dataBuffer);
+    console.log(`[Capstron] Pub/Sub event published: ${msgId}`);
+  } catch (err) {
+    console.error('[Capstron] Pub/Sub error:', err.message);
+  }
 
   res.status(200).json({
     message: 'File uploaded successfully!',
