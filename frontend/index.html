@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Capstron — Document Upload</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 16px;
+      overflow-x: hidden;
+      position: relative;
+    }
+    .bg {
+      position: fixed; inset: 0; z-index: 0;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      background-size: 400% 400%;
+      animation: gradMove 12s ease infinite;
+    }
+    @keyframes gradMove {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .blob {
+      position: fixed; border-radius: 50%;
+      filter: blur(80px); opacity: 0.2;
+      animation: float 8s ease-in-out infinite; z-index: 0;
+    }
+    .blob1 { width:400px; height:400px; background:#4facfe; top:-80px; left:-100px; }
+    .blob2 { width:350px; height:350px; background:#a855f7; bottom:-60px; right:-80px; animation-delay:3s; }
+    .blob3 { width:250px; height:250px; background:#00f2fe; top:40%; left:60%; animation-delay:5s; }
+    @keyframes float {
+      0%,100% { transform: translateY(0px); }
+      50%      { transform: translateY(-28px); }
+    }
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+    .particles { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+    .particle {
+      position:absolute; border-radius:50%;
+      background:rgba(255,255,255,0.5);
+      animation: rise linear infinite;
+    }
+    @keyframes rise {
+      0%   { transform:translateY(100vh); opacity:0; }
+      10%  { opacity:0.6; }
+      90%  { opacity:0.3; }
+      100% { transform:translateY(-10vh); opacity:0; }
+    }
+
+    .page-wrap {
+      position: relative; z-index: 10;
+      width: 100%; max-width: 520px;
+      display: flex; flex-direction: column;
+      align-items: center;
+    }
+
+    /* Logo */
+    .logo-area { text-align:center; margin-bottom:28px; }
+    .logo-area h1 {
+      font-size: 36px; font-weight: 800;
+      color: white; letter-spacing: 3px;
+    }
+    .logo-area h1 span {
+      background: linear-gradient(90deg, #4facfe, #a855f7);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .logo-area p {
+      color: rgba(255,255,255,0.45);
+      font-size: 13px; margin-top: 6px; letter-spacing: 1px;
+    }
+
+    /* Card */
+    .card {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      padding: 36px 40px;
+      width: 100%;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+      color: white;
+    }
+
+    .section-title {
+      font-size: 11px; font-weight: 700;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase; letter-spacing: 2px;
+      margin-bottom: 14px;
+    }
+
+    .upload-box {
+      border: 2px dashed rgba(79,172,254,0.4);
+      border-radius: 14px; padding: 34px 20px;
+      text-align: center;
+      background: rgba(79,172,254,0.05);
+      cursor: pointer; margin-bottom: 14px;
+      transition: all 0.3s;
+    }
+    .upload-box:hover {
+      background: rgba(79,172,254,0.12);
+      border-color: #4facfe;
+      transform: translateY(-2px);
+    }
+    .upload-box .main-text {
+      color: #4facfe; font-size:15px;
+      font-weight:600; margin-top:10px;
+    }
+    .upload-box .sub-text {
+      color: rgba(255,255,255,0.35);
+      font-size:12px; margin-top:4px;
+    }
+
+    input[type="file"] { display:none; }
+
+    #selected-name {
+      font-size:13px; color:rgba(255,255,255,0.55);
+      text-align:center; margin-bottom:14px;
+      padding:8px 14px;
+      background:rgba(255,255,255,0.05);
+      border-radius:8px; min-height:36px;
+      display:flex; align-items:center;
+      justify-content:center; gap:6px;
+    }
+
+    .btn-upload {
+      width:100%; padding:14px; border:none;
+      border-radius:12px; font-size:15px;
+      font-weight:700; cursor:pointer;
+      background: linear-gradient(135deg, #4facfe 0%, #a855f7 100%);
+      color:white; letter-spacing:0.5px;
+      transition:all 0.3s;
+      box-shadow: 0 4px 20px rgba(79,172,254,0.3);
+    }
+    .btn-upload:hover {
+      transform:translateY(-2px);
+      box-shadow:0 8px 30px rgba(79,172,254,0.5);
+    }
+    .btn-upload:disabled {
+      background:rgba(255,255,255,0.1);
+      color:rgba(255,255,255,0.3);
+      cursor:not-allowed; transform:none; box-shadow:none;
+    }
+
+    #status {
+      font-size:13px; padding:10px 16px;
+      border-radius:10px; margin-top:14px;
+      display:none; text-align:center; font-weight:500;
+    }
+    .success {
+      background:rgba(52,211,153,0.15); color:#34d399;
+      display:block !important;
+      border:1px solid rgba(52,211,153,0.3);
+    }
+    .error {
+      background:rgba(248,113,113,0.15); color:#f87171;
+      display:block !important;
+      border:1px solid rgba(248,113,113,0.3);
+    }
+    .loading {
+      background:rgba(79,172,254,0.15); color:#4facfe;
+      display:block !important;
+      border:1px solid rgba(79,172,254,0.3);
+    }
+
+    .footer {
+      margin-top:24px;
+      color:rgba(255,255,255,0.25);
+      font-size:12px; text-align:center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg"></div>
+  <div class="blob blob1"></div>
+  <div class="blob blob2"></div>
+  <div class="blob blob3"></div>
+  <div class="grid-bg"></div>
+  <div class="particles" id="particles"></div>
+
+  <div class="page-wrap">
+
+    <!-- Logo -->
+    <div class="logo-area">
+      <h1>Cap<span>stron</span></h1>
+      <p>Secure Document Management System</p>
+    </div>
+
+    <!-- Upload Card -->
+    <div class="card">
+      <div class="section-title">Upload Document</div>
+
+      <div class="upload-box"
+           onclick="document.getElementById('fileInput').click()">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none"
+             stroke="#4facfe" stroke-width="1.5" stroke-linecap="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div class="main-text">Click to select a file</div>
+        <div class="sub-text">PDF or DOCX — Maximum 10MB</div>
+      </div>
+
+      <input type="file" id="fileInput" accept=".pdf,.docx"
+             onchange="onFileSelected(this)"/>
+
+      <div id="selected-name">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="rgba(255,255,255,0.4)" stroke-width="2">
+          <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+          <polyline points="13 2 13 9 20 9"/>
+        </svg>
+        No file selected
+      </div>
+
+      <button class="btn-upload" id="uploadBtn"
+              onclick="uploadFile()" disabled>
+        Upload File
+      </button>
+
+      <div id="status"></div>
+    </div>
+
+    <div class="footer">Capstron © 2026 — Powered by GCP</div>
+  </div>
+
+<script>
+  const API_URL = "http://localhost:3000";
+
+  // Particles
+  const container = document.getElementById('particles');
+  for (let i = 0; i < 35; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const size = (Math.random() * 3 + 1) + 'px';
+    p.style.cssText = `
+      left:${Math.random()*100}vw;
+      width:${size}; height:${size};
+      animation-duration:${Math.random()*10+8}s;
+      animation-delay:${Math.random()*10}s;
+      opacity:${Math.random()*0.5+0.1};
+    `;
+    container.appendChild(p);
+  }
+
+  function onFileSelected(input) {
+    const file = input.files[0];
+    if (file) {
+      document.getElementById("selected-name").innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+             stroke="#4facfe" stroke-width="2">
+          <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+          <polyline points="13 2 13 9 20 9"/>
+        </svg> ${file.name}`;
+      document.getElementById("uploadBtn").disabled = false;
+    }
+  }
+
+  async function uploadFile() {
+    const input = document.getElementById("fileInput");
+    const file  = input.files[0];
+    const btn   = document.getElementById("uploadBtn");
+    if (!file) return;
+
+    setStatus("loading", "⏳  Uploading... please wait.");
+    btn.disabled = true;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_URL}/api/upload`, {
+        method: "POST", body: formData
+      });
+      if (res.ok) {
+        setStatus("success", "✅  File uploaded successfully!");
+        input.value = "";
+        document.getElementById("selected-name").innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="rgba(255,255,255,0.4)" stroke-width="2">
+            <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+            <polyline points="13 2 13 9 20 9"/>
+          </svg> No file selected`;
+        btn.disabled = true;
+      } else {
+        const err = await res.json();
+        setStatus("error", "❌  " + (err.message || "Upload failed."));
+        btn.disabled = false;
+      }
+    } catch {
+      setStatus("error", "❌  Cannot connect to backend. Is the server running?");
+      btn.disabled = false;
+    }
+  }
+
+  function setStatus(type, msg) {
+    const el = document.getElementById("status");
+    el.className = type;
+    el.textContent = msg;
+  }
+</script>
+</body>
+</html>
