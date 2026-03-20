@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Capstron — Document Upload</title>
+  <title>Capstone — Document Upload</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body {
@@ -59,14 +59,12 @@
       90%  { opacity:0.3; }
       100% { transform:translateY(-10vh); opacity:0; }
     }
-
     .page-wrap {
       position: relative; z-index: 10;
       width: 100%; max-width: 540px;
       display: flex; flex-direction: column;
       align-items: center;
     }
-
     .logo-area { text-align:center; margin-bottom:28px; }
     .logo-area h1 {
       font-size: 36px; font-weight: 800;
@@ -82,7 +80,6 @@
       color: rgba(255,255,255,0.45);
       font-size: 13px; margin-top: 6px; letter-spacing: 1px;
     }
-
     .card {
       background: rgba(255,255,255,0.07);
       backdrop-filter: blur(20px);
@@ -94,14 +91,12 @@
       box-shadow: 0 25px 60px rgba(0,0,0,0.4);
       color: white;
     }
-
     .section-title {
       font-size: 11px; font-weight: 700;
       color: rgba(255,255,255,0.4);
       text-transform: uppercase; letter-spacing: 2px;
       margin-bottom: 14px;
     }
-
     .file-type-badges {
       display: flex; flex-wrap: wrap; gap: 6px;
       margin-bottom: 16px;
@@ -115,7 +110,6 @@
     .badge-img  { background:rgba(52,211,153,0.2);  color:#34d399;  border:1px solid rgba(52,211,153,0.3);  }
     .badge-aud  { background:rgba(251,191,36,0.2);  color:#fbbf24;  border:1px solid rgba(251,191,36,0.3);  }
     .badge-vid  { background:rgba(168,85,247,0.2);  color:#a855f7;  border:1px solid rgba(168,85,247,0.3);  }
-
     .upload-box {
       border: 2px dashed rgba(79,172,254,0.4);
       border-radius: 14px; padding: 34px 20px;
@@ -137,9 +131,7 @@
       color: rgba(255,255,255,0.35);
       font-size:12px; margin-top:4px;
     }
-
     input[type="file"] { display:none; }
-
     #selected-name {
       font-size:13px; color:rgba(255,255,255,0.55);
       text-align:center; margin-bottom:14px;
@@ -149,8 +141,6 @@
       display:flex; align-items:center;
       justify-content:center; gap:6px;
     }
-
-    /* Progress bar */
     .progress-wrap {
       display: none;
       margin-bottom: 14px;
@@ -171,7 +161,6 @@
       border-radius: 10px;
       transition: width 0.3s ease;
     }
-
     .btn-upload {
       width:100%; padding:14px; border:none;
       border-radius:12px; font-size:15px;
@@ -190,7 +179,6 @@
       color:rgba(255,255,255,0.3);
       cursor:not-allowed; transform:none; box-shadow:none;
     }
-
     #status {
       font-size:13px; padding:10px 16px;
       border-radius:10px; margin-top:14px;
@@ -211,7 +199,6 @@
       display:block !important;
       border:1px solid rgba(79,172,254,0.3);
     }
-
     .footer {
       margin-top:24px;
       color:rgba(255,255,255,0.25);
@@ -229,16 +216,14 @@
   <div class="particles" id="particles"></div>
 
   <div class="page-wrap">
-
     <div class="logo-area">
-      <h1>Cap<span>stron</span></h1>
+      <h1>Cap<span>stone</span></h1>
       <p>Secure Document Management System</p>
     </div>
 
     <div class="card">
       <div class="section-title">Upload File</div>
 
-      <!-- File type badges -->
       <div class="file-type-badges">
         <span class="badge badge-doc">PDF</span>
         <span class="badge badge-doc">DOCX</span>
@@ -279,7 +264,6 @@
         No file selected
       </div>
 
-      <!-- Progress bar -->
       <div class="progress-wrap" id="progressWrap">
         <div class="progress-label">
           <span id="progressText">Uploading...</span>
@@ -298,11 +282,11 @@
       <div id="status"></div>
     </div>
 
-    <div class="footer">Capstron © 2026 — Powered by GCP</div>
+    <div class="footer">Capstone © 2026 — Powered by GCP</div>
   </div>
 
 <script>
-  const API_URL = "http://34.8.244.162";
+  const API_URL = "http://localhost:3000";
 
   // Particles
   const container = document.getElementById('particles');
@@ -342,89 +326,57 @@
     if (!file) return;
 
     btn.disabled = true;
-    showProgress(0, "Getting upload URL...");
+    showProgress(5, "Uploading...");
 
     try {
-      // Step 1 — Get signed URL from backend
-      const urlRes = await fetch(`${API_URL}/api/get-upload-url`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          fileName: file.name,
-          fileType: file.type || 'application/octet-stream'
-        })
-      });
-
-      if (!urlRes.ok) throw new Error('Could not get upload URL');
-      const { uploadUrl, fields, gcsFileName } = await urlRes.json();
-
-      showProgress(10, "Uploading to GCS...");
-
-      // Step 2 — Upload directly to GCS with progress
-      await uploadWithProgress(file, uploadUrl, fields);
-
-      showProgress(95, "Confirming upload...");
-
-      // Step 3 — Confirm with backend + publish Pub/Sub
-      await fetch(`${API_URL}/api/confirm-upload`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          fileName:    file.name,
-          fileSize:    file.size,
-          gcsFileName
-        })
-      });
-
-      showProgress(100, "Done!");
-      setTimeout(() => {
-        hideProgress();
-        setStatus("success", "✅  File uploaded successfully to GCS!");
-        input.value = "";
-        document.getElementById("selected-name").innerHTML = `
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-               stroke="rgba(255,255,255,0.4)" stroke-width="2">
-            <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
-            <polyline points="13 2 13 9 20 9"/>
-          </svg> No file selected`;
-        btn.disabled = true;
-      }, 600);
-
-    } catch (err) {
-      console.error(err);
-      hideProgress();
-      setStatus("error", "❌  " + (err.message || "Upload failed."));
-      btn.disabled = false;
-    }
-  }
-
-  function uploadWithProgress(file, uploadUrl, fields) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
       const formData = new FormData();
-
-      Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
       formData.append('file', file);
+
+      const xhr = new XMLHttpRequest();
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 85) + 10;
+          const pct = Math.round((e.loaded / e.total) * 90) + 5;
           showProgress(pct, `Uploading... ${formatSize(e.loaded)} / ${formatSize(e.total)}`);
         }
       };
 
       xhr.onload = () => {
-        if (xhr.status === 200 || xhr.status === 204) {
-          resolve();
+        if (xhr.status === 200) {
+          showProgress(100, "Done!");
+          setTimeout(() => {
+            hideProgress();
+            setStatus("success", "✅  File uploaded successfully!");
+            input.value = "";
+            document.getElementById("selected-name").innerHTML = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="rgba(255,255,255,0.4)" stroke-width="2">
+                <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+                <polyline points="13 2 13 9 20 9"/>
+              </svg> No file selected`;
+            btn.disabled = true;
+          }, 600);
         } else {
-          reject(new Error('GCS upload failed: ' + xhr.status));
+          hideProgress();
+          setStatus("error", "❌  Upload failed: " + xhr.status);
+          btn.disabled = false;
         }
       };
 
-      xhr.onerror = () => reject(new Error('Network error during upload'));
-      xhr.open('POST', uploadUrl);
+      xhr.onerror = () => {
+        hideProgress();
+        setStatus("error", "❌  Network error. Is the server running?");
+        btn.disabled = false;
+      };
+
+      xhr.open('POST', `${API_URL}/api/upload`);
       xhr.send(formData);
-    });
+
+    } catch (err) {
+      hideProgress();
+      setStatus("error", "❌  " + (err.message || "Upload failed."));
+      btn.disabled = false;
+    }
   }
 
   function showProgress(pct, text) {

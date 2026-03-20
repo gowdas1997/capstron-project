@@ -1,13 +1,21 @@
 const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
-const { Storage } = require('@google-cloud/storage');
-const { PubSub }  = require('@google-cloud/pubsub');
+const fs       = require('fs');
 const router   = express.Router();
+const { getPool, sql } = require('../db');
+require('dotenv').config();
 
-const storage  = new Storage({ projectId: process.env.GCP_PROJECT_ID });
-const pubsub   = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
-const bucket   = storage.bucket(process.env.GCS_BUCKET_NAME);
+// GCP imports — uncomment when deploying to GCP
+// const { Storage } = require('@google-cloud/storage');
+// const { PubSub }  = require('@google-cloud/pubsub');
+// const storage  = new Storage({ projectId: process.env.GCP_PROJECT_ID });
+// const pubsub   = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
+// const bucket   = storage.bucket(process.env.GCS_BUCKET_NAME);
+
+// Local uploads folder
+const uploadDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
 // All allowed file types
 const ALLOWED_TYPES = {
@@ -38,8 +46,18 @@ const ALLOWED_TYPES = {
   '.webm': 'video/webm'
 };
 
+// LOCAL: Save to disk
+const localStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename:    (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+});
+
+// GCP: Memory storage — uncomment when deploying to GCP
+// const gcpStorage = multer.memoryStorage();
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: localStorage,
+  // storage: gcpStorage, // uncomment for GCP
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ALLOWED_TYPES[ext]) {
@@ -60,15 +78,16 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   try {
     const ext      = path.extname(req.file.originalname).toLowerCase();
-    const fileName = Date.now() + '-' + req.file.originalname;
-    const gcsFile  = bucket.file(fileName);
+    const fileName = req.file.filename; // local disk filename
 
-    await gcsFile.save(req.file.buffer, {
-      contentType: ALLOWED_TYPES[ext] || 'application/octet-stream',
-      resumable:   false
-    });
-
-    console.log(`[Capstron] Saved to GCS: ${fileName}`);
+    // GCP: Save to GCS — uncomment when deploying to GCP
+    // const fileName = Date.now() + '-' + req.file.originalname;
+    // const gcsFile  = bucket.file(fileName);
+    // await gcsFile.save(req.file.buffer, {
+    //   contentType: ALLOWED_TYPES[ext] || 'application/octet-stream',
+    //   resumable:   false
+    // });
+    // console.log(`[Capstone] Saved to GCS: ${fileName}`);
 
     const record = {
       id:         fileRecords.length + 1,
@@ -80,16 +99,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     };
 
     fileRecords.push(record);
-    console.log(`[Capstron] Uploaded: ${record.fileName}`);
 
-    // Publish to Pub/Sub
+    // DB alli save maadi
     try {
-      const dataBuffer = Buffer.from(JSON.stringify(record));
-      const msgId = await pubsub.topic('file-uploaded').publish(dataBuffer);
-      console.log(`[Capstron] Pub/Sub event published: ${msgId}`);
-    } catch (err) {
-      console.error('[Capstron] Pub/Sub error:', err.message);
+      const pool = await getPool();
+      await pool.request()
+        .input('fileName', sql.NVarChar, req.file.originalname)
+        .input('fileSize', sql.BigInt,   req.file.size)
+        .input('fileType', sql.NVarChar, ext.replace('.', '').toUpperCase())
+        .input('filePath', sql.NVarChar, fileName)
+        .query(`INSERT INTO files (file_name, file_size, file_type, file_path)
+                VALUES (@fileName, @fileSize, @fileType, @filePath)`);
+      console.log(`[Capstone] Saved to DB: ${req.file.originalname}`);
+    } catch (dbErr) {
+      console.error('[Capstone] DB error:', dbErr.message);
     }
+
+    console.log(`[Capstone] Uploaded locally: ${record.fileName}`);
+
+    // GCP: Publish to Pub/Sub — uncomment when deploying to GCP
+    // try {
+    //   const dataBuffer = Buffer.from(JSON.stringify(record));
+    //   const msgId = await pubsub.topic('file-uploaded').publish(dataBuffer);
+    //   console.log(`[Capstone] Pub/Sub event published: ${msgId}`);
+    // } catch (err) {
+    //   console.error('[Capstone] Pub/Sub error:', err.message);
+    // }
 
     res.status(200).json({
       message: 'File uploaded successfully!',
@@ -97,7 +132,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     });
 
   } catch (err) {
-    console.error('[Capstron] Upload error:', err.message);
+    console.error('[Capstone] Upload error:', err.message);
     res.status(500).json({ message: 'Upload failed: ' + err.message });
   }
 });
