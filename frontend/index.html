@@ -62,12 +62,11 @@
 
     .page-wrap {
       position: relative; z-index: 10;
-      width: 100%; max-width: 520px;
+      width: 100%; max-width: 540px;
       display: flex; flex-direction: column;
       align-items: center;
     }
 
-    /* Logo */
     .logo-area { text-align:center; margin-bottom:28px; }
     .logo-area h1 {
       font-size: 36px; font-weight: 800;
@@ -84,7 +83,6 @@
       font-size: 13px; margin-top: 6px; letter-spacing: 1px;
     }
 
-    /* Card */
     .card {
       background: rgba(255,255,255,0.07);
       backdrop-filter: blur(20px);
@@ -103,6 +101,20 @@
       text-transform: uppercase; letter-spacing: 2px;
       margin-bottom: 14px;
     }
+
+    .file-type-badges {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-bottom: 16px;
+    }
+    .badge {
+      font-size: 10px; font-weight: 700;
+      padding: 3px 8px; border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+    .badge-doc  { background:rgba(79,172,254,0.2);  color:#4facfe;  border:1px solid rgba(79,172,254,0.3);  }
+    .badge-img  { background:rgba(52,211,153,0.2);  color:#34d399;  border:1px solid rgba(52,211,153,0.3);  }
+    .badge-aud  { background:rgba(251,191,36,0.2);  color:#fbbf24;  border:1px solid rgba(251,191,36,0.3);  }
+    .badge-vid  { background:rgba(168,85,247,0.2);  color:#a855f7;  border:1px solid rgba(168,85,247,0.3);  }
 
     .upload-box {
       border: 2px dashed rgba(79,172,254,0.4);
@@ -136,6 +148,28 @@
       border-radius:8px; min-height:36px;
       display:flex; align-items:center;
       justify-content:center; gap:6px;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      margin-bottom: 14px;
+    }
+    .progress-wrap.show { display: block; }
+    .progress-label {
+      font-size: 12px; color: rgba(255,255,255,0.5);
+      margin-bottom: 6px; display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar-bg {
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px; height: 8px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #4facfe, #a855f7);
+      border-radius: 10px;
+      transition: width 0.3s ease;
     }
 
     .btn-upload {
@@ -196,15 +230,29 @@
 
   <div class="page-wrap">
 
-    <!-- Logo -->
     <div class="logo-area">
       <h1>Cap<span>stron</span></h1>
       <p>Secure Document Management System</p>
     </div>
 
-    <!-- Upload Card -->
     <div class="card">
-      <div class="section-title">Upload Document</div>
+      <div class="section-title">Upload File</div>
+
+      <!-- File type badges -->
+      <div class="file-type-badges">
+        <span class="badge badge-doc">PDF</span>
+        <span class="badge badge-doc">DOCX</span>
+        <span class="badge badge-doc">TXT</span>
+        <span class="badge badge-doc">XLSX</span>
+        <span class="badge badge-img">JPG</span>
+        <span class="badge badge-img">PNG</span>
+        <span class="badge badge-img">GIF</span>
+        <span class="badge badge-aud">MP3</span>
+        <span class="badge badge-aud">WAV</span>
+        <span class="badge badge-vid">MP4</span>
+        <span class="badge badge-vid">MOV</span>
+        <span class="badge badge-vid">WEBM</span>
+      </div>
 
       <div class="upload-box"
            onclick="document.getElementById('fileInput').click()">
@@ -215,10 +263,11 @@
           <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
         <div class="main-text">Click to select a file</div>
-        <div class="sub-text">PDF, DOCX, Images, Audio, Video — Maximum 100MB</div>
+        <div class="sub-text">Documents, Images, Audio, Video — Max 100MB</div>
       </div>
 
-      <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.xlsx,.pptx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.mp4,.avi,.mov,.mkv,.webm"
+      <input type="file" id="fileInput"
+             accept=".pdf,.docx,.doc,.txt,.xlsx,.pptx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.m4a,.mp4,.avi,.mov,.mkv,.webm"
              onchange="onFileSelected(this)"/>
 
       <div id="selected-name">
@@ -228,6 +277,17 @@
           <polyline points="13 2 13 9 20 9"/>
         </svg>
         No file selected
+      </div>
+
+      <!-- Progress bar -->
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label">
+          <span id="progressText">Uploading...</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progressBar"></div>
+        </div>
       </div>
 
       <button class="btn-upload" id="uploadBtn"
@@ -268,8 +328,10 @@
              stroke="#4facfe" stroke-width="2">
           <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
           <polyline points="13 2 13 9 20 9"/>
-        </svg> ${file.name}`;
+        </svg> ${file.name} &nbsp;·&nbsp; ${formatSize(file.size)}`;
       document.getElementById("uploadBtn").disabled = false;
+      setStatus("", "");
+      document.getElementById("status").style.display = "none";
     }
   }
 
@@ -279,18 +341,45 @@
     const btn   = document.getElementById("uploadBtn");
     if (!file) return;
 
-    setStatus("loading", "⏳  Uploading... please wait.");
     btn.disabled = true;
-
-    const formData = new FormData();
-    formData.append("file", file);
+    showProgress(0, "Getting upload URL...");
 
     try {
-      const res = await fetch(`${API_URL}/api/upload`, {
-        method: "POST", body: formData
+      // Step 1 — Get signed URL from backend
+      const urlRes = await fetch(`${API_URL}/api/get-upload-url`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          fileName: file.name,
+          fileType: file.type || 'application/octet-stream'
+        })
       });
-      if (res.ok) {
-        setStatus("success", "✅  File uploaded successfully!");
+
+      if (!urlRes.ok) throw new Error('Could not get upload URL');
+      const { uploadUrl, fields, gcsFileName } = await urlRes.json();
+
+      showProgress(10, "Uploading to GCS...");
+
+      // Step 2 — Upload directly to GCS with progress
+      await uploadWithProgress(file, uploadUrl, fields);
+
+      showProgress(95, "Confirming upload...");
+
+      // Step 3 — Confirm with backend + publish Pub/Sub
+      await fetch(`${API_URL}/api/confirm-upload`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          fileName:    file.name,
+          fileSize:    file.size,
+          gcsFileName
+        })
+      });
+
+      showProgress(100, "Done!");
+      setTimeout(() => {
+        hideProgress();
+        setStatus("success", "✅  File uploaded successfully to GCS!");
         input.value = "";
         document.getElementById("selected-name").innerHTML = `
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -299,21 +388,70 @@
             <polyline points="13 2 13 9 20 9"/>
           </svg> No file selected`;
         btn.disabled = true;
-      } else {
-        const err = await res.json();
-        setStatus("error", "❌  " + (err.message || "Upload failed."));
-        btn.disabled = false;
-      }
-    } catch {
-      setStatus("error", "❌  Cannot connect to backend. Is the server running?");
+      }, 600);
+
+    } catch (err) {
+      console.error(err);
+      hideProgress();
+      setStatus("error", "❌  " + (err.message || "Upload failed."));
       btn.disabled = false;
     }
   }
 
+  function uploadWithProgress(file, uploadUrl, fields) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+
+      Object.entries(fields).forEach(([k, v]) => formData.append(k, v));
+      formData.append('file', file);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 85) + 10;
+          showProgress(pct, `Uploading... ${formatSize(e.loaded)} / ${formatSize(e.total)}`);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200 || xhr.status === 204) {
+          resolve();
+        } else {
+          reject(new Error('GCS upload failed: ' + xhr.status));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.open('POST', uploadUrl);
+      xhr.send(formData);
+    });
+  }
+
+  function showProgress(pct, text) {
+    document.getElementById("progressWrap").classList.add("show");
+    document.getElementById("progressBar").style.width  = pct + "%";
+    document.getElementById("progressPct").textContent  = pct + "%";
+    document.getElementById("progressText").textContent = text;
+    document.getElementById("status").style.display = "none";
+  }
+
+  function hideProgress() {
+    document.getElementById("progressWrap").classList.remove("show");
+    document.getElementById("progressBar").style.width = "0%";
+  }
+
   function setStatus(type, msg) {
     const el = document.getElementById("status");
+    if (!type) { el.style.display = "none"; return; }
     el.className = type;
     el.textContent = msg;
+  }
+
+  function formatSize(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1048576).toFixed(1) + " MB";
   }
 </script>
 </body>
