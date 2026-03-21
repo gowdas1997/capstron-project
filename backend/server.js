@@ -17,21 +17,23 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// LOCAL: File upload via multer
+// Serve frontend static files
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+// File upload routes
 const uploadRoutes = require('./routes/upload');
 const fileRoutes   = require('./routes/files');
 app.use('/api', uploadRoutes);
 app.use('/api', fileRoutes);
 
-// GCP: Signed URL — uncomment when deploying to GCP
-// app.post('/api/get-upload-url', async (req, res) => { ... });
-
-// GCP: Confirm upload + Pub/Sub — uncomment when deploying to GCP  
-// app.post('/api/confirm-upload', async (req, res) => { ... });
-
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Capstone server is running!' });
+});
+
+// Root route - serve index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
