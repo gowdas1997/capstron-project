@@ -1,44 +1,37 @@
 const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
-const fs       = require('fs');
 const router   = express.Router();
 const { getPool, sql } = require('../db');
 require('dotenv').config();
 
-// GCP imports — uncomment when deploying to GCP
+// GCP Storage — uncomment when deploying to GCP
 // const { Storage } = require('@google-cloud/storage');
-// const { PubSub }  = require('@google-cloud/pubsub');
 // const storage  = new Storage({ projectId: process.env.GCP_PROJECT_ID });
-// const pubsub   = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
 // const bucket   = storage.bucket(process.env.GCS_BUCKET_NAME);
 
-// Local uploads folder
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+// GCP Pub/Sub — uncomment when Pub/Sub is configured
+// const { PubSub } = require('@google-cloud/pubsub');
+// const pubsub  = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
 
 // All allowed file types
 const ALLOWED_TYPES = {
-  // Documents
   '.pdf':  'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.doc':  'application/msword',
   '.txt':  'text/plain',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  // Images
   '.jpg':  'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png':  'image/png',
   '.gif':  'image/gif',
   '.webp': 'image/webp',
   '.svg':  'image/svg+xml',
-  // Audio
   '.mp3':  'audio/mpeg',
   '.wav':  'audio/wav',
   '.ogg':  'audio/ogg',
   '.m4a':  'audio/mp4',
-  // Video
   '.mp4':  'video/mp4',
   '.avi':  'video/x-msvideo',
   '.mov':  'video/quicktime',
@@ -46,18 +39,9 @@ const ALLOWED_TYPES = {
   '.webm': 'video/webm'
 };
 
-// LOCAL: Save to disk
-const localStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-});
-
-// GCP: Memory storage — uncomment when deploying to GCP
-// const gcpStorage = multer.memoryStorage();
-
+// GCP: Memory storage (file GCS ge direct upload maadakke)
 const upload = multer({
-  storage: localStorage,
-  // storage: gcpStorage, // uncomment for GCP
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ALLOWED_TYPES[ext]) {
@@ -69,8 +53,6 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
 });
 
-const fileRecords = [];
-
 router.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded.' });
@@ -78,27 +60,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
   try {
     const ext      = path.extname(req.file.originalname).toLowerCase();
-    const fileName = req.file.filename; // local disk filename
+    const fileName = Date.now() + '-' + req.file.originalname;
 
     // GCP: Save to GCS — uncomment when deploying to GCP
-    // const fileName = Date.now() + '-' + req.file.originalname;
-    // const gcsFile  = bucket.file(fileName);
+    // const gcsFile = bucket.file(fileName);
     // await gcsFile.save(req.file.buffer, {
     //   contentType: ALLOWED_TYPES[ext] || 'application/octet-stream',
     //   resumable:   false
     // });
     // console.log(`[Capstone] Saved to GCS: ${fileName}`);
-
-    const record = {
-      id:         fileRecords.length + 1,
-      fileName:   req.file.originalname,
-      fileSize:   req.file.size,
-      fileType:   ext.replace('.', '').toUpperCase(),
-      filePath:   fileName,
-      uploadedAt: new Date().toISOString()
-    };
-
-    fileRecords.push(record);
 
     // DB alli save maadi
     try {
@@ -115,20 +85,28 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       console.error('[Capstone] DB error:', dbErr.message);
     }
 
-    console.log(`[Capstone] Uploaded locally: ${record.fileName}`);
-
-    // GCP: Publish to Pub/Sub — uncomment when deploying to GCP
+    // GCP Pub/Sub — uncomment when Pub/Sub is configured
     // try {
-    //   const dataBuffer = Buffer.from(JSON.stringify(record));
-    //   const msgId = await pubsub.topic('file-uploaded').publish(dataBuffer);
-    //   console.log(`[Capstone] Pub/Sub event published: ${msgId}`);
-    // } catch (err) {
-    //   console.error('[Capstone] Pub/Sub error:', err.message);
+    //   const record = { fileName: req.file.originalname, fileSize: req.file.size,
+    //                    fileType: ext.replace('.','').toUpperCase(), filePath: fileName,
+    //                    uploadedAt: new Date().toISOString() };
+    //   const msgId = await pubsub.topic('file-uploaded')
+    //                             .publish(Buffer.from(JSON.stringify(record)));
+    //   console.log(`[Capstone] Pub/Sub published: ${msgId}`);
+    // } catch (pubErr) {
+    //   console.error('[Capstone] Pub/Sub error:', pubErr.message);
     // }
 
+    console.log(`[Capstone] Uploaded: ${req.file.originalname}`);
     res.status(200).json({
       message: 'File uploaded successfully!',
-      file: record
+      file: {
+        fileName:   req.file.originalname,
+        fileSize:   req.file.size,
+        fileType:   ext.replace('.', '').toUpperCase(),
+        filePath:   fileName,
+        uploadedAt: new Date().toISOString()
+      }
     });
 
   } catch (err) {
@@ -137,5 +115,4 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-module.exports         = router;
-module.exports.records = fileRecords;
+module.exports = router;

@@ -8,8 +8,16 @@ functions.cloudEvent('validateFile', (cloudEvent) => {
 
   console.log('[ValidateFile] Received event:', JSON.stringify(data));
 
-  const allowedTypes = ['.pdf', '.docx'];
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  // Must match upload.js ALLOWED_TYPES
+  const allowedTypes = [
+    '.pdf', '.docx', '.doc', '.txt', '.xlsx', '.pptx',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.mp3', '.wav', '.ogg', '.m4a',
+    '.mp4', '.avi', '.mov', '.mkv', '.webm'
+  ];
+
+  // Must match upload.js limits
+  const maxSize = 100 * 1024 * 1024; // 100MB
 
   const fileName = data.fileName || '';
   const fileSize = data.fileSize || 0;

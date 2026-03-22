@@ -6,8 +6,9 @@ const config = {
   database: process.env.DB_NAME,
   user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
+  port:     1433,
   options: {
-    encrypt:                false,
+    encrypt:                true,  // GCP Cloud SQL ge beku
     trustServerCertificate: true
   }
 };
