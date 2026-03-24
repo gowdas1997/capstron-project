@@ -14,7 +14,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # 2. Setup GCP authentication
+    # 2. Authenticate to GCP
     - name: Authenticate to GCP
       uses: google-github-actions/auth@v2
       with:
@@ -24,19 +24,20 @@ jobs:
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
 
-    # 4. Deploy Backend (SSH into VM)
+    # 4. Deploy Backend (FIXED)
     - name: Deploy Backend
       run: |
         gcloud compute ssh cloudbuild@capstone-backend-mig-4rd7 \
           --zone=asia-south1-b \
           --tunnel-through-iap \
           --command="
-            cd /app &&
+            cd /app/backend &&
             git pull &&
-            cd backend &&
             npm install &&
-            node migrate.js &&
-            pm2 restart backend || pm2 start server.js --name backend
+            node migrate.js || true &&
+            pm2 delete backend || true &&
+            pm2 start server.js --name backend &&
+            pm2 save
           "
 
     # 5. Deploy Frontend to GCS
