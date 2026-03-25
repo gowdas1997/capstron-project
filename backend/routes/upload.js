@@ -45,12 +45,20 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     // Publish to Pub/Sub
     try {
+      // Fetch logged-in user's email from DB
+      const userResult = await pool.request()
+        .input('id', sql.Int, req.user.id)
+        .query('SELECT email FROM users WHERE id = @id');
+
+      const userEmail = userResult.recordset[0]?.email || '';
+
       const record = {
         fileName:   req.file.originalname,
         fileSize:   req.file.size,
         fileType:   path.extname(req.file.originalname),
         filePath:   fileName,
         uploadedBy: req.user.id,
+        userEmail:  userEmail,        // ← logged-in user's email for sending notification
         uploadedAt: new Date().toISOString()
       };
       const msgId = await pubsub.topic('file-uploaded').publish(Buffer.from(JSON.stringify(record)));
