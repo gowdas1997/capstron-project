@@ -29,7 +29,7 @@ jobs:
       uses: google-github-actions/setup-gcloud@v2
 
     # ─────────────────────────────────────────────
-    # 4. Deploy Backend (FIXED)
+    # 4. Deploy Backend
     # ─────────────────────────────────────────────
     - name: Deploy Backend
       run: |
@@ -38,45 +38,33 @@ jobs:
           --tunnel-through-iap \
           --command="
             set -e
-
             echo 'Fixing permissions...'
             sudo chown -R cloudbuild:cloudbuild /app || true
-
             echo 'Fixing git safe directory...'
             git config --global --add safe.directory /app || true
-
-            echo 'Navigating to backend...'
-            cd /app/backend
-
-            echo 'Resetting local changes (IMPORTANT FIX)...'
+            echo 'Navigating to app...'
+            cd /app
+            echo 'Resetting local changes...'
             git reset --hard
-
             echo 'Pulling latest code...'
             git pull origin main
-
             echo 'Installing dependencies...'
+            cd /app/backend
             npm install
-
-            echo 'Loading ENV...'
-            export \$(grep -v '^#' .env | xargs) || true
-
-            echo 'Running migration (safe)...'
-            node migrate.js || true
-
+            echo 'Running migration (safe - IF NOT EXISTS inside)...'
+            node migrate.js
             echo 'Restarting backend...'
             pm2 delete backend || true
             pm2 start server.js --name backend
             pm2 save
-
             echo 'Backend deployed successfully ✅'
           "
 
     # ─────────────────────────────────────────────
-    # 5. Deploy Frontend to GCS
+    # 6. Deploy Frontend to GCS
     # ─────────────────────────────────────────────
     - name: Deploy Frontend
       run: |
         echo "Deploying frontend to GCS..."
         gsutil -m rsync -r -d ./frontend gs://capstone-project-frontend-assets
-
         echo "Frontend deployed successfully ✅"
