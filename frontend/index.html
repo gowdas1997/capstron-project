@@ -1,66 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Capstone Dashboard</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Capstone Dashboard</title>
 
-  <style>
-    body {
-      margin:0;
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg,#0f0c29,#302b63,#24243e);
-      color:white;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      min-height:100vh;
-    }
+<style>
+body {
+  margin:0;
+  font-family:'Segoe UI',sans-serif;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  color:white;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  min-height:100vh;
+}
 
-    .container {
-      width:100%;
-      max-width:700px;
-    }
+.container {
+  width:100%;
+  max-width:700px;
+}
 
-    .topbar {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:20px;
-    }
+.topbar {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
 
-    .card {
-      background:rgba(255,255,255,0.05);
-      padding:25px;
-      border-radius:15px;
-      margin-bottom:20px;
-    }
+.card {
+  background:rgba(255,255,255,0.05);
+  padding:25px;
+  border-radius:15px;
+  margin-bottom:20px;
+}
 
-    button {
-      padding:10px;
-      border:none;
-      border-radius:8px;
-      cursor:pointer;
-      background:linear-gradient(135deg,#4facfe,#a855f7);
-      color:white;
-      font-weight:bold;
-    }
+button {
+  padding:10px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  background:linear-gradient(135deg,#4facfe,#a855f7);
+  color:white;
+  font-weight:bold;
+}
 
-    table {
-      width:100%;
-      margin-top:10px;
-      border-collapse:collapse;
-    }
+table {
+  width:100%;
+  margin-top:10px;
+  border-collapse:collapse;
+}
 
-    td, th {
-      padding:8px;
-      border-bottom:1px solid rgba(255,255,255,0.1);
-    }
+td, th {
+  padding:8px;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+}
 
-    .logout {
-      background:red;
-    }
-  </style>
+.logout { background:red; }
+.admin-btn { background:#a855f7; margin-right:10px; }
+</style>
 </head>
 
 <body>
@@ -72,6 +71,12 @@
     <h2>Capstone Dashboard</h2>
     <div>
       <span id="username"></span>
+
+      <!-- ✅ ADMIN BUTTON -->
+      <button id="adminBtn" class="admin-btn" onclick="goAdmin()" style="display:none;">
+        Admin
+      </button>
+
       <button onclick="logout()" class="logout">Logout</button>
     </div>
   </div>
@@ -95,130 +100,156 @@
 </div>
 
 <script>
-  const API_URL = window.location.origin;
 
-  let token = localStorage.getItem("token");
-  let user = {};
+// ✅ FIXED API URL
+const API_URL = "https://sudarshangowda.online";
+
+let token = localStorage.getItem("token");
+let user = {};
+
+try {
+  user = JSON.parse(localStorage.getItem("user")) || {};
+} catch(e) {}
+
+// ❌ FIXED REDIRECT
+if (!token) {
+  window.location.href = "login.html";
+}
+
+// Show username
+document.getElementById("username").innerText =
+  "Hello, " + (user.username || "User");
+
+// Show admin button
+if (user.role === "admin") {
+  document.getElementById("adminBtn").style.display = "inline-block";
+}
+
+// Logout
+function logout() {
+  localStorage.clear();
+  window.location.href = "login.html";
+}
+
+// Go admin
+function goAdmin(){
+  window.location.href = "admin.html";
+}
+
+// Headers
+function authHeaders() {
+  return {
+    "Authorization": "Bearer " + token
+  };
+}
+
+// Load files
+async function loadFiles() {
+  try {
+    const res = await fetch(`${API_URL}/api/files`, {
+      headers: authHeaders()
+    });
+
+    if (res.status === 401) {
+      logout();
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!data.length) {
+      document.getElementById("files").innerHTML = "No files uploaded";
+      return;
+    }
+
+    let html = "<table><tr><th>Name</th><th>Size</th><th>Action</th></tr>";
+
+    data.forEach(f => {
+      html += `
+        <tr>
+          <td>${f.file_name}</td>
+          <td>${formatSize(f.file_size)}</td>
+          <td>
+            <button onclick="downloadFile(${f.id}, '${f.file_name}')">
+              Download
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += "</table>";
+
+    document.getElementById("files").innerHTML = html;
+
+  } catch(err) {
+    document.getElementById("files").innerText = "Failed to load files";
+  }
+}
+
+// Upload file
+async function uploadFile() {
+  const file = document.getElementById("fileInput").files[0];
+
+  if (!file) return alert("Select file");
+
+  const formData = new FormData();
+  formData.append("file", file);
 
   try {
-    user = JSON.parse(localStorage.getItem("user")) || {};
-  } catch(e) {}
+    const res = await fetch(`${API_URL}/api/upload`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: formData
+    });
 
-  if (!token) {
-    window.location.href = "/login";
-  }
-
-  document.getElementById("username").innerText =
-    "Hello, " + (user.username || "User");
-
-  function logout() {
-    localStorage.clear();
-    window.location.href = "/login";
-  }
-
-  function authHeaders() {
-    return {
-      "Authorization": "Bearer " + token
-    };
-  }
-
-  async function loadFiles() {
-    try {
-      const res = await fetch(`${API_URL}/api/files`, {
-        headers: authHeaders()
-      });
-
-      if (res.status === 401) {
-        logout();
-        return;
-      }
-
-      const data = await res.json();
-
-      let html = "<table><tr><th>Name</th><th>Size</th><th>Action</th></tr>";
-
-      data.forEach(f => {
-        html += `
-          <tr>
-            <td>${f.file_name}</td>
-            <td>${formatSize(f.file_size)}</td>
-            <td>
-              <button onclick="downloadFile(${f.id}, '${f.file_name}')">
-                Download
-              </button>
-            </td>
-          </tr>
-        `;
-      });
-
-      html += "</table>";
-
-      document.getElementById("files").innerHTML = html;
-
-    } catch(err) {
-      document.getElementById("files").innerText = "Failed to load files";
+    if (res.status === 401) {
+      logout();
+      return;
     }
-  }
 
-  async function uploadFile() {
-    const file = document.getElementById("fileInput").files[0];
-
-    if (!file) return alert("Select file");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch(`${API_URL}/api/upload`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: formData
-      });
-
-      if (res.status === 401) {
-        logout();
-        return;
-      }
-
-      if (res.ok) {
-        document.getElementById("status").innerText = "Upload success ✅";
-        loadFiles();
-      } else {
-        document.getElementById("status").innerText = "Upload failed ❌";
-      }
-
-    } catch(err) {
-      document.getElementById("status").innerText = "Error ❌";
+    if (res.ok) {
+      document.getElementById("status").innerText = "Upload success ✅";
+      loadFiles();
+    } else {
+      document.getElementById("status").innerText = "Upload failed ❌";
     }
+
+  } catch(err) {
+    document.getElementById("status").innerText = "Error ❌";
   }
+}
 
-  async function downloadFile(id, name) {
-    try {
-      const res = await fetch(`${API_URL}/api/files/${id}/download`, {
-        headers: authHeaders()
-      });
+// Download
+async function downloadFile(id, name) {
+  try {
+    const res = await fetch(`${API_URL}/api/files/${id}/download`, {
+      headers: authHeaders()
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      if (data.downloadUrl) {
-        const a = document.createElement("a");
-        a.href = data.downloadUrl;
-        a.download = name;
-        a.click();
-      }
-
-    } catch(err) {
-      alert("Download failed");
+    if (data.downloadUrl) {
+      const a = document.createElement("a");
+      a.href = data.downloadUrl;
+      a.download = name;
+      a.click();
     }
-  }
 
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + " B";
-    if (bytes < 1048576) return (bytes/1024).toFixed(1)+" KB";
-    return (bytes/1048576).toFixed(1)+" MB";
+  } catch(err) {
+    alert("Download failed");
   }
+}
 
-  loadFiles();
+// Format size
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes/1024).toFixed(1)+" KB";
+  return (bytes/1048576).toFixed(1)+" MB";
+}
+
+loadFiles();
+
 </script>
 
 </body>

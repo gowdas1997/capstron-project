@@ -13,6 +13,7 @@ const bucket   = storage.bucket(process.env.GCS_BUCKET_NAME);
 const { PubSub } = require('@google-cloud/pubsub');
 const pubsub = new PubSub({ projectId: process.env.GCP_PROJECT_ID });
 
+// Allowed file types
 const ALLOWED_TYPES = {
   '.pdf':  'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -37,45 +38,66 @@ const ALLOWED_TYPES = {
   '.webm': 'video/webm'
 };
 
+// Multer config
 const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ALLOWED_TYPES[ext]) cb(null, true);
-    else cb(new Error('File type not allowed!'), false);
+
+    if (ALLOWED_TYPES[ext]) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not allowed!'), false);
+    }
   },
-  limits: { fileSize: 100 * 1024 * 1024 }
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB
+  }
 });
 
-// Protected upload route
+// ─────────────────────────────────────────────
+// 📤 UPLOAD FILE (Protected)
+// ─────────────────────────────────────────────
 router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
-  if (!req.file)
-    return res.status(400).json({ message: 'No file uploaded.' });
-
   try {
-    const ext      = path.extname(req.file.originalname).toLowerCase();
-    const fileName = Date.now() + '-' + req.file.originalname;
+    if (!req.file)
+      return res.status(400).json({ message: 'No file uploaded.' });
 
-    // Save to GCS
+    const ext = path.extname(req.file.originalname).toLowerCase();
+
+    // ✅ Safe filename
+    const safeName = req.file.originalname.replace(/\s+/g, '_');
+    const fileName = `${Date.now()}-${safeName}`;
+
+    // Upload to GCS
     const gcsFile = bucket.file(fileName);
+
     await gcsFile.save(req.file.buffer, {
       contentType: ALLOWED_TYPES[ext] || 'application/octet-stream',
       resumable: false
     });
-    console.log('[Capstone] GCS SUCCESS:', fileName);
 
-    // Save to DB with user id
+    console.log('[Upload] GCS SUCCESS:', fileName);
+
+    // Save in DB
     const pool = await getPool();
+
     await pool.request()
       .input('fileName',   sql.NVarChar, req.file.originalname)
       .input('fileSize',   sql.BigInt,   req.file.size)
       .input('fileType',   sql.NVarChar, ext)
       .input('filePath',   sql.NVarChar, fileName)
       .input('uploadedBy', sql.Int,      req.user.id)
-      .query('INSERT INTO files (file_name, file_size, file_type, file_path, uploaded_by) VALUES (@fileName, @fileSize, @fileType, @filePath, @uploadedBy)');
-    console.log('[Capstone] DB SUCCESS');
+      .query(`
+        INSERT INTO files 
+        (file_name, file_size, file_type, file_path, uploaded_by)
+        VALUES 
+        (@fileName, @fileSize, @fileType, @filePath, @uploadedBy)
+      `);
 
-    // Pub/Sub
+    console.log('[Upload] DB SUCCESS');
+
+    // Pub/Sub event (optional but good)
     try {
       const record = {
         fileName:   req.file.originalname,
@@ -85,17 +107,32 @@ router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
         uploadedBy: req.user.email,
         uploadedAt: new Date().toISOString()
       };
-      const msgId = await pubsub.topic('file-uploaded').publish(Buffer.from(JSON.stringify(record)));
-      console.log('[Capstone] PubSub SUCCESS:', msgId);
+
+      const msgId = await pubsub
+        .topic('file-uploaded')
+        .publish(Buffer.from(JSON.stringify(record)));
+
+      console.log('[Upload] PubSub SUCCESS:', msgId);
+
     } catch (pubErr) {
-      console.error('[Capstone] PubSub error:', pubErr.message);
+      console.error('[Upload] PubSub ERROR:', pubErr.message);
     }
 
-    res.status(200).json({ message: 'File uploaded successfully!' });
+    res.status(200).json({
+      message: 'File uploaded successfully!'
+    });
 
   } catch (err) {
-    console.error('[Capstone] Upload error:', err.message);
-    res.status(500).json({ message: err.message });
+    console.error('[Upload] ERROR:', err.message);
+
+    // Handle multer error
+    if (err.message === 'File type not allowed!') {
+      return res.status(400).json({ message: err.message });
+    }
+
+    res.status(500).json({
+      message: 'Upload failed.'
+    });
   }
 });
 

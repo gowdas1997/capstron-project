@@ -104,20 +104,23 @@ button:disabled{
 
   <div id="status"></div>
 
+  <!-- ✅ FIXED LINK -->
   <div class="links">
-    Don't have account? <a href="/register">Register</a>
+    Don't have account? <a href="register.html">Register</a>
   </div>
 </div>
 
 <script>
 
-// ✅ AUTO detect API
-const API_URL = window.location.origin;
+// ✅ FIXED API (IMPORTANT)
+const API_URL = "https://sudarshangowda.online";
 
 // Already logged in → redirect
 if (localStorage.getItem('token')) {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  window.location.href = user.role === 'admin' ? '/admin' : '/';
+
+  window.location.href =
+    user.role === 'admin' ? 'admin.html' : 'index.html';
 }
 
 // Enter key
@@ -152,9 +155,12 @@ async function login() {
 
       setStatus('success', '✅ Login successful');
 
+      // ✅ FIXED REDIRECT
       setTimeout(() => {
         window.location.href =
-          data.user.role === 'admin' ? '/admin' : '/';
+          data.user.role === 'admin'
+            ? 'admin.html'
+            : 'index.html';
       }, 1000);
 
     } else {

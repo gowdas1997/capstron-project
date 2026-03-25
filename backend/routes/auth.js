@@ -8,6 +8,34 @@ require('dotenv').config();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // ─────────────────────────────────────────────
+// 🔐 VERIFY TOKEN
+// ─────────────────────────────────────────────
+function verifyToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token)
+    return res.status(401).json({ message: 'Access denied. No token.' });
+
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(403).json({ message: 'Invalid or expired token.' });
+  }
+}
+
+// ─────────────────────────────────────────────
+// 🛡️ ADMIN CHECK
+// ─────────────────────────────────────────────
+function isAdmin(req, res, next) {
+  if (req.user.role !== 'admin')
+    return res.status(403).json({ message: 'Admin access required.' });
+
+  next();
+}
+
+// ─────────────────────────────────────────────
 // 🔐 REGISTER
 // ─────────────────────────────────────────────
 router.post('/register', async (req, res) => {
@@ -42,14 +70,16 @@ router.post('/register', async (req, res) => {
       `);
 
     console.log(`[Auth] Registered: ${email}`);
-    res.status(201).json({ message: 'Registration successful! Please login.' });
+
+    res.status(201).json({
+      message: 'Registration successful! Please login.'
+    });
 
   } catch (err) {
     console.error('[Auth] Register error:', err.message);
     res.status(500).json({ message: 'Registration failed.' });
   }
 });
-
 
 // ─────────────────────────────────────────────
 // 🔑 LOGIN
@@ -58,7 +88,7 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password)
-    return res.status(400).json({ message: 'Email and password are required.' });
+    return res.status(400).json({ message: 'Email and password required.' });
 
   try {
     const pool = await getPool();
@@ -106,14 +136,12 @@ router.post('/login', async (req, res) => {
   }
 });
 
-
 // ─────────────────────────────────────────────
 // 👤 GET CURRENT USER
 // ─────────────────────────────────────────────
 router.get('/me', verifyToken, (req, res) => {
   res.json({ user: req.user });
 });
-
 
 // ─────────────────────────────────────────────
 // 🧑‍💼 GET ALL USERS (ADMIN)
@@ -136,7 +164,6 @@ router.get('/users', verifyToken, isAdmin, async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch users.' });
   }
 });
-
 
 // ─────────────────────────────────────────────
 // 🔄 RESET PASSWORD (ADMIN)
@@ -172,37 +199,6 @@ router.post('/reset-password', verifyToken, isAdmin, async (req, res) => {
     res.status(500).json({ message: 'Password reset failed.' });
   }
 });
-
-
-// ─────────────────────────────────────────────
-// 🔐 VERIFY TOKEN
-// ─────────────────────────────────────────────
-function verifyToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token)
-    return res.status(401).json({ message: 'Access denied. No token.' });
-
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch (err) {
-    res.status(403).json({ message: 'Invalid or expired token.' });
-  }
-}
-
-
-// ─────────────────────────────────────────────
-// 🛡️ ADMIN CHECK
-// ─────────────────────────────────────────────
-function isAdmin(req, res, next) {
-  if (req.user.role !== 'admin')
-    return res.status(403).json({ message: 'Admin access required.' });
-
-  next();
-}
-
 
 // ─────────────────────────────────────────────
 // EXPORTS

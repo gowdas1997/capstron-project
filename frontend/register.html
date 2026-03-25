@@ -115,19 +115,20 @@ button:disabled{
 
   <div id="status"></div>
 
+  <!-- ✅ FIXED LINK -->
   <div class="links">
-    Already have account? <a href="/login">Login</a>
+    Already have account? <a href="login.html">Login</a>
   </div>
 </div>
 
 <script>
 
-// ✅ AUTO detect API (VERY IMPORTANT)
-const API_URL = window.location.origin;
+// ✅ FIXED API URL
+const API_URL = "https://sudarshangowda.online";
 
 // If already logged in
 if (localStorage.getItem('token')) {
-  window.location.href = '/';
+  window.location.href = "index.html";
 }
 
 // Enter key support
@@ -168,9 +169,12 @@ async function register() {
 
     if (res.ok) {
       setStatus('success', '✅ Account created!');
+
+      // ✅ FIXED REDIRECT
       setTimeout(() => {
-        window.location.href = '/login';
+        window.location.href = "login.html";
       }, 1500);
+
     } else {
       setStatus('error', '❌ ' + (data.message || 'Error'));
       resetBtn();

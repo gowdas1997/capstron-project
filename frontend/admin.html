@@ -89,9 +89,9 @@ th,td{
 </div>
 
 <script>
-const API_URL = window.location.origin; // ✅ FIXED
 
-let selectedUserId = null;
+// ✅ FIXED API URL (IMPORTANT)
+const API_URL = "https://sudarshangowda.online";
 
 let token = localStorage.getItem('token');
 let user = {};
@@ -100,26 +100,28 @@ try {
   user = JSON.parse(localStorage.getItem('user')) || {};
 } catch(e){}
 
+// ❌ FIXED REDIRECTS
 if (!token) {
-  window.location.href = '/login';
+  window.location.href = 'login.html';
 }
 
 if (user.role !== 'admin') {
-  window.location.href = '/';
+  window.location.href = 'index.html';
 }
 
+// Show admin name
 document.getElementById('adminName').innerText =
   user.username || user.email;
 
 // Logout
 function logout(){
   localStorage.clear();
-  window.location.href = '/login';
+  window.location.href = 'login.html';
 }
 
 // Go back to app
 function goHome(){
-  window.location.href = '/';
+  window.location.href = 'index.html';
 }
 
 // Headers
@@ -195,7 +197,7 @@ async function loadUsers(){
   }
 }
 
-// Reset password (simple prompt)
+// Reset password
 async function resetPassword(userId){
   const newPassword = prompt("Enter new password:");
 
@@ -231,6 +233,7 @@ async function resetPassword(userId){
 }
 
 loadUsers();
+
 </script>
 
 </body>
