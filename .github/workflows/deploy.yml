@@ -24,38 +24,49 @@ jobs:
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
 
-    # 4. Deploy Backend (FINAL FIXED)
+    # 4. Deploy Backend
     - name: Deploy Backend
       run: |
         gcloud compute ssh cloudbuild@capstone-backend-mig-4rd7 \
           --zone=asia-south1-b \
           --tunnel-through-iap \
           --command="
-            # Fix permissions
-            sudo chown -R cloudbuild:cloudbuild /app &&
+            set -e
 
-            # Fix git safe directory
-            git config --global --add safe.directory /app &&
+            echo 'Fixing permissions...'
+            sudo chown -R cloudbuild:cloudbuild /app || true
 
-            # Go to backend
-            cd /app/backend &&
+            echo 'Fixing git safe directory...'
+            git config --global --add safe.directory /app || true
 
-            # Pull latest code
-            git pull &&
+            echo 'Navigating to backend...'
+            cd /app/backend
 
-            # Install dependencies
-            npm install &&
+            echo 'Pulling latest code...'
+            git pull
 
-            # Run migrations (ignore error if already done)
-            node migrate.js || true &&
+            echo 'Installing dependencies...'
+            npm install
 
-            # Restart clean PM2
-            pm2 delete all || true &&
-            pm2 start server.js --name backend &&
+            echo 'Loading ENV...'
+            export \$(grep -v '^#' .env | xargs) || true
+
+            echo 'Running migration (optional)...'
+            node migrate.js || true
+
+            echo 'Restarting backend...'
+            pm2 restart backend || pm2 start server.js --name backend
+
+            echo 'Saving PM2...'
             pm2 save
+
+            echo 'Backend deployed successfully ✅'
           "
 
-    # 5. Deploy Frontend to GCS
+    # 5. Deploy Frontend
     - name: Deploy Frontend
       run: |
+        echo "Deploying frontend to GCS..."
         gsutil -m rsync -r -d ./frontend gs://capstone-project-frontend-assets
+
+        echo "Frontend deployed successfully ✅"
