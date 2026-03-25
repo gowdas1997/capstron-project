@@ -133,7 +133,7 @@ if (localStorage.getItem('token')) {
 
 // Enter key support
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter') register();
+  if (e.key === "Enter" && !document.getElementById("registerBtn").disabled) register();
 });
 
 async function register() {
