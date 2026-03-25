@@ -31,11 +31,25 @@ jobs:
           --zone=asia-south1-b \
           --tunnel-through-iap \
           --command="
+            # Fix permissions
+            sudo chown -R cloudbuild:cloudbuild /app &&
+
+            # Fix git safe directory
             git config --global --add safe.directory /app &&
+
+            # Go to backend
             cd /app/backend &&
+
+            # Pull latest code
             git pull &&
+
+            # Install dependencies
             npm install &&
+
+            # Run migrations (ignore error if already done)
             node migrate.js || true &&
+
+            # Restart clean PM2
             pm2 delete all || true &&
             pm2 start server.js --name backend &&
             pm2 save
