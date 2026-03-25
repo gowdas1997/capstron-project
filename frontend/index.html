@@ -1,256 +1,442 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Capstone Dashboard</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Capstone — Document Upload</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 16px;overflow-x:hidden;position:relative;}
+    .bg{position:fixed;inset:0;z-index:0;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);background-size:400% 400%;animation:gradMove 12s ease infinite;}
+    @keyframes gradMove{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    .blob{position:fixed;border-radius:50%;filter:blur(80px);opacity:.2;animation:float 8s ease-in-out infinite;z-index:0;}
+    .blob1{width:400px;height:400px;background:#4facfe;top:-80px;left:-100px;}
+    .blob2{width:350px;height:350px;background:#a855f7;bottom:-60px;right:-80px;animation-delay:3s;}
+    .blob3{width:250px;height:250px;background:#00f2fe;top:40%;left:60%;animation-delay:5s;}
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-28px)}}
+    .grid-bg{position:fixed;inset:0;z-index:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:60px 60px;}
+    .particles{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+    .particle{position:absolute;border-radius:50%;background:rgba(255,255,255,.5);animation:rise linear infinite;}
+    @keyframes rise{0%{transform:translateY(100vh);opacity:0}10%{opacity:.6}90%{opacity:.3}100%{transform:translateY(-10vh);opacity:0}}
+    .page-wrap{position:relative;z-index:10;width:100%;max-width:620px;display:flex;flex-direction:column;align-items:center;}
+    .logo-area{text-align:center;margin-bottom:28px;}
+    .logo-area h1{font-size:36px;font-weight:800;color:white;letter-spacing:3px;}
+    .logo-area h1 span{background:linear-gradient(90deg,#4facfe,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+    .logo-area p{color:rgba(255,255,255,.45);font-size:13px;margin-top:6px;letter-spacing:1px;}
+    .card{background:rgba(255,255,255,.07);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:36px 40px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.4);color:white;margin-bottom:20px;}
+    .section-title{font-size:11px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:2px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
+    .file-type-badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+    .badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.5px;}
+    .badge-doc{background:rgba(79,172,254,.2);color:#4facfe;border:1px solid rgba(79,172,254,.3);}
+    .badge-img{background:rgba(52,211,153,.2);color:#34d399;border:1px solid rgba(52,211,153,.3);}
+    .badge-aud{background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid rgba(251,191,36,.3);}
+    .badge-vid{background:rgba(168,85,247,.2);color:#a855f7;border:1px solid rgba(168,85,247,.3);}
+    .upload-box{border:2px dashed rgba(79,172,254,.4);border-radius:14px;padding:34px 20px;text-align:center;background:rgba(79,172,254,.05);cursor:pointer;margin-bottom:14px;transition:all .3s;}
+    .upload-box:hover{background:rgba(79,172,254,.12);border-color:#4facfe;transform:translateY(-2px);}
+    .upload-box .main-text{color:#4facfe;font-size:15px;font-weight:600;margin-top:10px;}
+    .upload-box .sub-text{color:rgba(255,255,255,.35);font-size:12px;margin-top:4px;}
+    input[type="file"]{display:none;}
+    #selected-name{font-size:13px;color:rgba(255,255,255,.55);text-align:center;margin-bottom:14px;padding:8px 14px;background:rgba(255,255,255,.05);border-radius:8px;min-height:36px;display:flex;align-items:center;justify-content:center;gap:6px;}
+    .progress-wrap{display:none;margin-bottom:14px;}
+    .progress-wrap.show{display:block;}
+    .progress-label{font-size:12px;color:rgba(255,255,255,.5);margin-bottom:6px;display:flex;justify-content:space-between;}
+    .progress-bar-bg{background:rgba(255,255,255,.1);border-radius:10px;height:8px;overflow:hidden;}
+    .progress-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,#4facfe,#a855f7);border-radius:10px;transition:width .3s ease;}
+    .btn-upload{width:100%;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;background:linear-gradient(135deg,#4facfe 0%,#a855f7 100%);color:white;letter-spacing:.5px;transition:all .3s;box-shadow:0 4px 20px rgba(79,172,254,.3);}
+    .btn-upload:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(79,172,254,.5);}
+    .btn-upload:disabled{background:rgba(255,255,255,.1);color:rgba(255,255,255,.3);cursor:not-allowed;transform:none;box-shadow:none;}
+    #status{font-size:13px;padding:10px 16px;border-radius:10px;margin-top:14px;display:none;text-align:center;font-weight:500;}
+    .success{background:rgba(52,211,153,.15);color:#34d399;display:block!important;border:1px solid rgba(52,211,153,.3);}
+    .error{background:rgba(248,113,113,.15);color:#f87171;display:block!important;border:1px solid rgba(248,113,113,.3);}
+    .files-table{width:100%;border-collapse:collapse;margin-top:10px;}
+    .files-table th{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;}
+    .files-table td{padding:10px;font-size:13px;color:rgba(255,255,255,.8);border-bottom:1px solid rgba(255,255,255,.06);}
+    .btn-download{padding:5px 12px;border:none;border-radius:8px;background:linear-gradient(135deg,#4facfe,#a855f7);color:white;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;}
+    .btn-download:hover{transform:translateY(-1px);opacity:.9;}
+    .btn-refresh{padding:5px 12px;border:1px solid rgba(79,172,254,.4);border-radius:8px;background:transparent;color:#4facfe;font-size:11px;cursor:pointer;transition:all .2s;}
+    .btn-refresh:hover{background:rgba(79,172,254,.1);}
+    .no-files{text-align:center;color:rgba(255,255,255,.3);padding:20px;font-size:13px;}
+    .footer{margin-top:24px;color:rgba(255,255,255,.25);font-size:12px;text-align:center;}
 
-<style>
-body {
-  margin:0;
-  font-family:'Segoe UI',sans-serif;
-  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
-  color:white;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  min-height:100vh;
-}
+    /* ── Auth styles ── */
+    .auth-input{width:100%;padding:12px 16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;color:white;font-size:14px;margin-bottom:12px;outline:none;transition:border .2s;}
+    .auth-input:focus{border-color:#4facfe;}
+    .auth-input::placeholder{color:rgba(255,255,255,.35);}
+    .auth-tab{background:none;border:none;color:rgba(255,255,255,.4);font-size:13px;font-weight:700;cursor:pointer;padding:6px 16px;border-radius:8px;transition:all .2s;letter-spacing:.5px;}
+    .auth-tab.active{color:white;background:rgba(79,172,254,.2);}
+    .auth-tabs{display:flex;gap:6px;margin-bottom:24px;}
+    .auth-error{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px;display:none;}
+    .auth-error.show{display:block;}
 
-.container {
-  width:100%;
-  max-width:700px;
-}
+    /* ── User bar ── */
+    .user-bar{display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:16px;}
+    .user-greeting{color:rgba(255,255,255,.6);font-size:13px;}
+    .user-greeting span{color:white;font-weight:700;}
+    .btn-logout{padding:5px 14px;border:1px solid rgba(248,113,113,.4);border-radius:8px;background:transparent;color:#f87171;font-size:11px;cursor:pointer;transition:all .2s;}
+    .btn-logout:hover{background:rgba(248,113,113,.1);}
+    .btn-admin{padding:5px 14px;border:1px solid rgba(168,85,247,.4);border-radius:8px;background:transparent;color:#a855f7;font-size:11px;cursor:pointer;transition:all .2s;margin-right:8px;}
+    .btn-admin:hover{background:rgba(168,85,247,.1);}
 
-.topbar {
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:20px;
-}
-
-.card {
-  background:rgba(255,255,255,0.05);
-  padding:25px;
-  border-radius:15px;
-  margin-bottom:20px;
-}
-
-button {
-  padding:10px;
-  border:none;
-  border-radius:8px;
-  cursor:pointer;
-  background:linear-gradient(135deg,#4facfe,#a855f7);
-  color:white;
-  font-weight:bold;
-}
-
-table {
-  width:100%;
-  margin-top:10px;
-  border-collapse:collapse;
-}
-
-td, th {
-  padding:8px;
-  border-bottom:1px solid rgba(255,255,255,0.1);
-}
-
-.logout { background:red; }
-.admin-btn { background:#a855f7; margin-right:10px; }
-</style>
+    /* ── Admin panel ── */
+    .admin-table{width:100%;border-collapse:collapse;margin-top:10px;}
+    .admin-table th{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.1);text-align:left;}
+    .admin-table td{padding:10px;font-size:13px;color:rgba(255,255,255,.8);border-bottom:1px solid rgba(255,255,255,.06);}
+    .btn-reset{padding:4px 10px;border:none;border-radius:6px;background:rgba(168,85,247,.3);color:#c084fc;font-size:11px;cursor:pointer;border:1px solid rgba(168,85,247,.4);}
+    .btn-reset:hover{background:rgba(168,85,247,.5);}
+    .role-badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;}
+    .role-admin{background:rgba(168,85,247,.2);color:#a855f7;border:1px solid rgba(168,85,247,.3);}
+    .role-user{background:rgba(79,172,254,.15);color:#60a5fa;border:1px solid rgba(79,172,254,.25);}
+  </style>
 </head>
-
 <body>
+  <div class="bg"></div>
+  <div class="blob blob1"></div>
+  <div class="blob blob2"></div>
+  <div class="blob blob3"></div>
+  <div class="grid-bg"></div>
+  <div class="particles" id="particles"></div>
 
-<div class="container">
+  <div class="page-wrap" id="page-wrap">
 
-  <!-- Top Bar -->
-  <div class="topbar">
-    <h2>Capstone Dashboard</h2>
-    <div>
-      <span id="username"></span>
+    <!-- ══ AUTH SCREEN ══ -->
+    <div id="auth-screen">
+      <div class="logo-area">
+        <h1>Cap<span>stone</span></h1>
+        <p>Secure Document Management System</p>
+      </div>
+      <div class="card" style="max-width:420px;margin:0 auto;">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="tab-login" onclick="showTab('login')">Sign In</button>
+          <button class="auth-tab" id="tab-register" onclick="showTab('register')">Register</button>
+        </div>
 
-      <!-- ✅ ADMIN BUTTON -->
-      <button id="adminBtn" class="admin-btn" onclick="goAdmin()" style="display:none;">
-        Admin
-      </button>
+        <div id="auth-error" class="auth-error"></div>
 
-      <button onclick="logout()" class="logout">Logout</button>
+        <!-- Login form -->
+        <div id="form-login">
+          <input class="auth-input" type="email" id="login-email" placeholder="Email address" autocomplete="email"/>
+          <input class="auth-input" type="password" id="login-password" placeholder="Password" autocomplete="current-password"/>
+          <button class="btn-upload" onclick="doLogin()">Sign In</button>
+        </div>
+
+        <!-- Register form -->
+        <div id="form-register" style="display:none;">
+          <input class="auth-input" type="text" id="reg-username" placeholder="Username"/>
+          <input class="auth-input" type="email" id="reg-email" placeholder="Email address" autocomplete="email"/>
+          <input class="auth-input" type="password" id="reg-password" placeholder="Password (min 6 chars)" autocomplete="new-password"/>
+          <button class="btn-upload" onclick="doRegister()">Create Account</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ MAIN APP SCREEN ══ -->
+    <div id="app-screen" style="display:none;width:100%;">
+      <div class="logo-area">
+        <h1>Cap<span>stone</span></h1>
+        <p>Secure Document Management System</p>
+      </div>
+
+      <!-- User bar -->
+      <div class="user-bar">
+        <div class="user-greeting">Welcome, <span id="display-username"></span></div>
+        <div>
+          <button class="btn-admin" id="admin-btn" style="display:none;" onclick="showAdminPanel()">⚙ Admin</button>
+          <button class="btn-logout" onclick="doLogout()">Sign Out</button>
+        </div>
+      </div>
+
+      <!-- Upload card -->
+      <div class="card">
+        <div class="section-title">Upload File</div>
+        <div class="file-type-badges">
+          <span class="badge badge-doc">PDF</span><span class="badge badge-doc">DOCX</span><span class="badge badge-doc">TXT</span><span class="badge badge-doc">XLSX</span><span class="badge badge-img">JPG</span><span class="badge badge-img">PNG</span><span class="badge badge-img">GIF</span><span class="badge badge-aud">MP3</span><span class="badge badge-aud">WAV</span><span class="badge badge-vid">MP4</span><span class="badge badge-vid">MOV</span><span class="badge badge-vid">WEBM</span>
+        </div>
+        <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="1.5" stroke-linecap="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div class="main-text">Click to select a file</div>
+          <div class="sub-text">Documents, Images, Audio, Video — Max 100MB</div>
+        </div>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.xlsx,.pptx,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.m4a,.mp4,.avi,.mov,.mkv,.webm" onchange="onFileSelected(this)"/>
+        <div id="selected-name">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+          No file selected
+        </div>
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-label"><span id="progressText">Uploading...</span><span id="progressPct">0%</span></div>
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
+        </div>
+        <button class="btn-upload" id="uploadBtn" onclick="uploadFile()" disabled>Upload File</button>
+        <div id="status"></div>
+      </div>
+
+      <!-- Files card -->
+      <div class="card">
+        <div class="section-title">
+          <span>Uploaded Files</span>
+          <button class="btn-refresh" onclick="loadFiles()">↻ Refresh</button>
+        </div>
+        <div id="filesList"><div class="no-files">Loading files...</div></div>
+      </div>
+    </div>
+
+    <!-- ══ ADMIN PANEL SCREEN ══ -->
+    <div id="admin-screen" style="display:none;width:100%;">
+      <div class="logo-area">
+        <h1>Cap<span>stone</span></h1>
+        <p>Admin Panel</p>
+      </div>
+      <div class="card">
+        <div class="section-title">
+          <span>User Management</span>
+          <button class="btn-refresh" onclick="showAppScreen()">← Back</button>
+        </div>
+        <div id="adminUsersList"><div class="no-files">Loading users...</div></div>
+      </div>
+    </div>
+
+    <div class="footer">Capstone © 2026 — Powered by GCP</div>
+  </div>
+
+  <!-- Reset Password Modal -->
+  <div id="reset-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;display:none;align-items:center;justify-content:center;">
+    <div style="background:#1e1b3a;border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:36px;width:360px;color:white;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px;">Reset Password</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:16px;">User: <span id="reset-username" style="color:white;"></span></div>
+      <input class="auth-input" type="password" id="new-password" placeholder="New password (min 6 chars)"/>
+      <div id="reset-error" class="auth-error"></div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button class="btn-upload" style="flex:1;" onclick="doResetPassword()">Reset</button>
+        <button style="flex:1;padding:14px;border:1px solid rgba(255,255,255,.2);border-radius:12px;background:transparent;color:rgba(255,255,255,.6);cursor:pointer;font-size:15px;" onclick="closeResetModal()">Cancel</button>
+      </div>
     </div>
   </div>
 
-  <!-- Upload Section -->
-  <div class="card">
-    <h3>Upload File</h3>
-
-    <input type="file" id="fileInput"><br><br>
-    <button onclick="uploadFile()">Upload</button>
-
-    <p id="status"></p>
-  </div>
-
-  <!-- Files List -->
-  <div class="card">
-    <h3>Your Files</h3>
-    <div id="files"></div>
-  </div>
-
-</div>
-
 <script>
+  const API_URL = "https://sudarshangowda.online";
+  let currentResetUserId = null;
 
-// ✅ FIXED API URL
-const API_URL = "https://sudarshangowda.online";
+  // ── Particles ──
+  const container = document.getElementById('particles');
+  for(let i=0;i<35;i++){const p=document.createElement('div');p.className='particle';const size=(Math.random()*3+1)+'px';p.style.cssText=`left:${Math.random()*100}vw;width:${size};height:${size};animation-duration:${Math.random()*10+8}s;animation-delay:${Math.random()*10}s;opacity:${Math.random()*0.5+0.1};`;container.appendChild(p);}
 
-let token = localStorage.getItem("token");
-let user = {};
+  // ── Token helpers ──
+  function saveSession(token, username, role) {
+    localStorage.setItem('cap_token', token);
+    localStorage.setItem('cap_username', username);
+    localStorage.setItem('cap_role', role);
+  }
+  function getToken() { return localStorage.getItem('cap_token'); }
+  function getUsername() { return localStorage.getItem('cap_username'); }
+  function getRole() { return localStorage.getItem('cap_role'); }
+  function clearSession() { localStorage.removeItem('cap_token'); localStorage.removeItem('cap_username'); localStorage.removeItem('cap_role'); }
 
-try {
-  user = JSON.parse(localStorage.getItem("user")) || {};
-} catch(e) {}
+  // ── Auth header ──
+  function authHeaders() {
+    return { 'Authorization': 'Bearer ' + getToken(), 'Content-Type': 'application/json' };
+  }
 
-// ❌ FIXED REDIRECT
-if (!token) {
-  window.location.href = "login.html";
-}
+  // ── Tab switching ──
+  function showTab(tab) {
+    document.getElementById('form-login').style.display    = tab==='login'    ? '' : 'none';
+    document.getElementById('form-register').style.display = tab==='register' ? '' : 'none';
+    document.getElementById('tab-login').classList.toggle('active',    tab==='login');
+    document.getElementById('tab-register').classList.toggle('active', tab==='register');
+    document.getElementById('auth-error').classList.remove('show');
+  }
 
-// Show username
-document.getElementById("username").innerText =
-  "Hello, " + (user.username || "User");
+  function showAuthError(msg) {
+    const el = document.getElementById('auth-error');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
 
-// Show admin button
-if (user.role === "admin") {
-  document.getElementById("adminBtn").style.display = "inline-block";
-}
+  // ── Login ──
+  async function doLogin() {
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    if(!email||!password){ showAuthError('Please enter email and password.'); return; }
+    try {
+      const res  = await fetch(`${API_URL}/api/auth/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
+      const data = await res.json();
+      if(!res.ok){ showAuthError(data.message||'Login failed.'); return; }
+      saveSession(data.token, data.username, data.role);
+      enterApp();
+    } catch(e) { showAuthError('Network error. Please try again.'); }
+  }
 
-// Logout
-function logout() {
-  localStorage.clear();
-  window.location.href = "login.html";
-}
+  // ── Register ──
+  async function doRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const email    = document.getElementById('reg-email').value.trim();
+    const password = document.getElementById('reg-password').value;
+    if(!username||!email||!password){ showAuthError('All fields are required.'); return; }
+    try {
+      const res  = await fetch(`${API_URL}/api/auth/register`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username, email, password}) });
+      const data = await res.json();
+      if(!res.ok){ showAuthError(data.message||'Registration failed.'); return; }
+      saveSession(data.token, data.username, data.role);
+      enterApp();
+    } catch(e) { showAuthError('Network error. Please try again.'); }
+  }
 
-// Go admin
-function goAdmin(){
-  window.location.href = "admin.html";
-}
+  // ── Enter app after login/register ──
+  function enterApp() {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = '';
+    document.getElementById('display-username').textContent = getUsername();
+    document.getElementById('admin-btn').style.display = getRole()==='admin' ? '' : 'none';
+    loadFiles();
+  }
 
-// Headers
-function authHeaders() {
-  return {
-    "Authorization": "Bearer " + token
+  // ── Logout ──
+  function doLogout() {
+    clearSession();
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = 'none';
+    document.getElementById('auth-screen').style.display = '';
+    document.getElementById('auth-error').classList.remove('show');
+  }
+
+  // ── Check existing session on load ──
+  window.onload = function() {
+    if(getToken()) { enterApp(); }
   };
-}
 
-// Load files
-async function loadFiles() {
-  try {
-    const res = await fetch(`${API_URL}/api/files`, {
-      headers: authHeaders()
-    });
-
-    if (res.status === 401) {
-      logout();
-      return;
-    }
-
-    const data = await res.json();
-
-    if (!data.length) {
-      document.getElementById("files").innerHTML = "No files uploaded";
-      return;
-    }
-
-    let html = "<table><tr><th>Name</th><th>Size</th><th>Action</th></tr>";
-
-    data.forEach(f => {
-      html += `
-        <tr>
-          <td>${f.file_name}</td>
-          <td>${formatSize(f.file_size)}</td>
-          <td>
-            <button onclick="downloadFile(${f.id}, '${f.file_name}')">
-              Download
-            </button>
-          </td>
-        </tr>
-      `;
-    });
-
-    html += "</table>";
-
-    document.getElementById("files").innerHTML = html;
-
-  } catch(err) {
-    document.getElementById("files").innerText = "Failed to load files";
+  // ── Admin panel ──
+  function showAdminPanel() {
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('admin-screen').style.display = '';
+    loadAdminUsers();
   }
-}
 
-// Upload file
-async function uploadFile() {
-  const file = document.getElementById("fileInput").files[0];
-
-  if (!file) return alert("Select file");
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  try {
-    const res = await fetch(`${API_URL}/api/upload`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: formData
-    });
-
-    if (res.status === 401) {
-      logout();
-      return;
-    }
-
-    if (res.ok) {
-      document.getElementById("status").innerText = "Upload success ✅";
-      loadFiles();
-    } else {
-      document.getElementById("status").innerText = "Upload failed ❌";
-    }
-
-  } catch(err) {
-    document.getElementById("status").innerText = "Error ❌";
+  function showAppScreen() {
+    document.getElementById('admin-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = '';
   }
-}
 
-// Download
-async function downloadFile(id, name) {
-  try {
-    const res = await fetch(`${API_URL}/api/files/${id}/download`, {
-      headers: authHeaders()
-    });
-
-    const data = await res.json();
-
-    if (data.downloadUrl) {
-      const a = document.createElement("a");
-      a.href = data.downloadUrl;
-      a.download = name;
-      a.click();
-    }
-
-  } catch(err) {
-    alert("Download failed");
+  async function loadAdminUsers() {
+    try {
+      const res  = await fetch(`${API_URL}/api/admin/users`, { headers: authHeaders() });
+      const data = await res.json();
+      if(!res.ok){ document.getElementById('adminUsersList').innerHTML='<div class="no-files">'+data.message+'</div>'; return; }
+      if(!data.length){ document.getElementById('adminUsersList').innerHTML='<div class="no-files">No users yet.</div>'; return; }
+      document.getElementById('adminUsersList').innerHTML = `
+        <table class="admin-table">
+          <thead><tr><th>#</th><th>Username</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${data.map(u=>`
+              <tr>
+                <td>${u.id}</td>
+                <td>${u.username}</td>
+                <td>${u.email}</td>
+                <td><span class="role-badge ${u.role==='admin'?'role-admin':'role-user'}">${u.role}</span></td>
+                <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                <td>
+                  <button class="btn-reset" onclick="openResetModal(${u.id},'${u.username}')">Reset pwd</button>
+                  ${u.role!=='admin'?`<button class="btn-reset" style="margin-left:6px;background:rgba(52,211,153,.2);color:#34d399;border-color:rgba(52,211,153,.3);" onclick="makeAdmin(${u.id})">Make admin</button>`:''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    } catch(e) { document.getElementById('adminUsersList').innerHTML='<div class="no-files">Failed to load users.</div>'; }
   }
-}
 
-// Format size
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1048576) return (bytes/1024).toFixed(1)+" KB";
-  return (bytes/1048576).toFixed(1)+" MB";
-}
+  function openResetModal(userId, username) {
+    currentResetUserId = userId;
+    document.getElementById('reset-username').textContent = username;
+    document.getElementById('new-password').value = '';
+    document.getElementById('reset-error').classList.remove('show');
+    document.getElementById('reset-modal').style.display = 'flex';
+  }
+  function closeResetModal() {
+    document.getElementById('reset-modal').style.display = 'none';
+    currentResetUserId = null;
+  }
 
-loadFiles();
+  async function doResetPassword() {
+    const newPassword = document.getElementById('new-password').value;
+    if(!newPassword){ document.getElementById('reset-error').textContent='Enter a new password.'; document.getElementById('reset-error').classList.add('show'); return; }
+    try {
+      const res  = await fetch(`${API_URL}/api/admin/reset-password`, { method:'POST', headers: authHeaders(), body: JSON.stringify({userId: currentResetUserId, newPassword}) });
+      const data = await res.json();
+      if(!res.ok){ document.getElementById('reset-error').textContent=data.message; document.getElementById('reset-error').classList.add('show'); return; }
+      closeResetModal();
+      alert('Password reset successfully!');
+    } catch(e) { document.getElementById('reset-error').textContent='Network error.'; document.getElementById('reset-error').classList.add('show'); }
+  }
 
+  async function makeAdmin(userId) {
+    if(!confirm('Make this user an admin?')) return;
+    try {
+      const res  = await fetch(`${API_URL}/api/admin/set-role`, { method:'POST', headers: authHeaders(), body: JSON.stringify({userId, role:'admin'}) });
+      const data = await res.json();
+      if(!res.ok){ alert(data.message); return; }
+      loadAdminUsers();
+    } catch(e) { alert('Failed to update role.'); }
+  }
+
+  // ── File upload ──
+  async function loadFiles(){
+    try{
+      const res=await fetch(`${API_URL}/api/files`, { headers: {'Authorization':'Bearer '+getToken()} });
+      if(res.status===401||res.status===403){ doLogout(); return; }
+      const data=await res.json();
+      const el=document.getElementById('filesList');
+      if(!data.length){el.innerHTML='<div class="no-files">No files uploaded yet.</div>';return;}
+      el.innerHTML=`<table class="files-table"><thead><tr><th>#</th><th>File Name</th><th>Size</th><th>Type</th><th>Date</th><th>Action</th></tr></thead><tbody>${data.map(f=>`<tr><td>${f.id}</td><td>${f.file_name}</td><td>${formatSize(f.file_size)}</td><td>${f.file_type.toUpperCase()}</td><td>${new Date(f.uploaded_at).toLocaleDateString()}</td><td><button class="btn-download" onclick="downloadFile(${f.id},'${f.file_name}')">↓ Download</button></td></tr>`).join('')}</tbody></table>`;
+    }catch(e){document.getElementById('filesList').innerHTML='<div class="no-files">Failed to load files.</div>';}
+  }
+
+  async function downloadFile(id,name){
+    try{
+      const res=await fetch(`${API_URL}/api/files/${id}/download`, { headers: {'Authorization':'Bearer '+getToken()} });
+      const data=await res.json();
+      if(data.downloadUrl){const a=document.createElement('a');a.href=data.downloadUrl;a.download=name;a.target='_blank';a.click();}
+    }catch(e){alert('Download failed!');}
+  }
+
+  function onFileSelected(input){
+    const file=input.files[0];
+    if(file){
+      document.getElementById("selected-name").innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4facfe" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> ${file.name} &nbsp;·&nbsp; ${formatSize(file.size)}`;
+      document.getElementById("uploadBtn").disabled=false;
+      document.getElementById("status").style.display="none";
+    }
+  }
+
+  async function uploadFile(){
+    const input=document.getElementById("fileInput");
+    const file=input.files[0];
+    const btn=document.getElementById("uploadBtn");
+    if(!file)return;
+    btn.disabled=true;
+    showProgress(5,"Uploading...");
+    try{
+      const formData=new FormData();
+      formData.append('file',file);
+      const xhr=new XMLHttpRequest();
+      xhr.upload.onprogress=(e)=>{if(e.lengthComputable){const pct=Math.round((e.loaded/e.total)*90)+5;showProgress(pct,`Uploading... ${formatSize(e.loaded)} / ${formatSize(e.total)}`);}};
+      xhr.onload=()=>{
+        if(xhr.status===200){
+          showProgress(100,"Done!");
+          setTimeout(()=>{hideProgress();setStatus("success","✅  File uploaded successfully!");input.value="";document.getElementById("selected-name").innerHTML=`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> No file selected`;btn.disabled=true;loadFiles();},600);
+        }else{hideProgress();setStatus("error","❌  Upload failed: "+xhr.status);btn.disabled=false;}
+      };
+      xhr.onerror=()=>{hideProgress();setStatus("error","❌  Network error.");btn.disabled=false;};
+      xhr.open('POST',`${API_URL}/api/upload`);
+      xhr.setRequestHeader('Authorization','Bearer '+getToken());
+      xhr.send(formData);
+    }catch(err){hideProgress();setStatus("error","❌  "+(err.message||"Upload failed."));btn.disabled=false;}
+  }
+
+  function showProgress(pct,text){document.getElementById("progressWrap").classList.add("show");document.getElementById("progressBar").style.width=pct+"%";document.getElementById("progressPct").textContent=pct+"%";document.getElementById("progressText").textContent=text;document.getElementById("status").style.display="none";}
+  function hideProgress(){document.getElementById("progressWrap").classList.remove("show");document.getElementById("progressBar").style.width="0%";}
+  function setStatus(type,msg){const el=document.getElementById("status");if(!type){el.style.display="none";return;}el.className=type;el.textContent=msg;}
+  function formatSize(bytes){if(!bytes)return"";if(bytes<1024)return bytes+" B";if(bytes<1048576)return(bytes/1024).toFixed(1)+" KB";return(bytes/1048576).toFixed(1)+" MB";}
 </script>
-
 </body>
 </html>
