@@ -18,6 +18,7 @@ const upload = multer({
 });
 
 router.post('/upload', upload.single('file'), async (req, res) => {
+  console.log("🚀 UPLOAD API HIT");  
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded.' });
   }
