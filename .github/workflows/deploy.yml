@@ -24,18 +24,19 @@ jobs:
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
 
-    # 4. Deploy Backend (FIXED)
+    # 4. Deploy Backend (FINAL FIXED)
     - name: Deploy Backend
       run: |
         gcloud compute ssh cloudbuild@capstone-backend-mig-4rd7 \
           --zone=asia-south1-b \
           --tunnel-through-iap \
           --command="
+            git config --global --add safe.directory /app &&
             cd /app/backend &&
             git pull &&
             npm install &&
             node migrate.js || true &&
-            pm2 delete backend || true &&
+            pm2 delete all || true &&
             pm2 start server.js --name backend &&
             pm2 save
           "
