@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Capstone Admin Panel</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Segoe UI',sans-serif;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  color:white;
+  min-height:100vh;
+  padding:20px;
+}
+
+.container{max-width:900px;margin:auto;}
+
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+button{
+  padding:8px 14px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:bold;
+}
+
+.logout{background:red;color:white;}
+.home{background:#4facfe;color:white;}
+
+.card{
+  background:rgba(255,255,255,0.05);
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:20px;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+th,td{
+  padding:10px;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+}
+
+.badge{
+  padding:4px 8px;
+  border-radius:10px;
+  font-size:11px;
+}
+
+.admin{background:#a855f7;}
+.user{background:#4facfe;}
+
+.reset{
+  background:orange;
+  color:white;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <h2>Admin Panel</h2>
+    <div>
+      <span id="adminName"></span>
+      <button class="home" onclick="goHome()">App</button>
+      <button class="logout" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Users</h3>
+    <div id="usersList">Loading...</div>
+  </div>
+
+</div>
+
+<script>
+const API_URL = window.location.origin; // ✅ FIXED
+
+let selectedUserId = null;
+
+let token = localStorage.getItem('token');
+let user = {};
+
+try {
+  user = JSON.parse(localStorage.getItem('user')) || {};
+} catch(e){}
+
+if (!token) {
+  window.location.href = '/login';
+}
+
+if (user.role !== 'admin') {
+  window.location.href = '/';
+}
+
+document.getElementById('adminName').innerText =
+  user.username || user.email;
+
+// Logout
+function logout(){
+  localStorage.clear();
+  window.location.href = '/login';
+}
+
+// Go back to app
+function goHome(){
+  window.location.href = '/';
+}
+
+// Headers
+function authHeaders(){
+  return {
+    'Authorization':'Bearer '+token
+  };
+}
+
+// Load users
+async function loadUsers(){
+  try{
+    const res = await fetch(`${API_URL}/api/auth/users`,{
+      headers: authHeaders()
+    });
+
+    if(res.status === 401 || res.status === 403){
+      logout();
+      return;
+    }
+
+    const data = await res.json();
+
+    if(!data.length){
+      document.getElementById('usersList').innerHTML =
+        "No users found";
+      return;
+    }
+
+    let html = `
+      <table>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Action</th>
+      </tr>
+    `;
+
+    data.forEach(u=>{
+      html += `
+        <tr>
+          <td>${u.id}</td>
+          <td>${u.username}</td>
+          <td>${u.email}</td>
+          <td>
+            <span class="badge ${u.role}">
+              ${u.role}
+            </span>
+          </td>
+          <td>
+            ${
+              u.id !== user.id
+              ? `<button class="reset"
+                   onclick="resetPassword(${u.id})">
+                   Reset
+                 </button>`
+              : 'You'
+            }
+          </td>
+        </tr>
+      `;
+    });
+
+    html += "</table>";
+
+    document.getElementById('usersList').innerHTML = html;
+
+  }catch(err){
+    document.getElementById('usersList').innerText =
+      "Failed to load users";
+  }
+}
+
+// Reset password (simple prompt)
+async function resetPassword(userId){
+  const newPassword = prompt("Enter new password:");
+
+  if(!newPassword || newPassword.length < 6){
+    alert("Min 6 characters required");
+    return;
+  }
+
+  try{
+    const res = await fetch(`${API_URL}/api/auth/reset-password`,{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':'Bearer '+token
+      },
+      body: JSON.stringify({
+        userId,
+        newPassword
+      })
+    });
+
+    const data = await res.json();
+
+    if(res.ok){
+      alert("Password reset success ✅");
+    }else{
+      alert(data.message || "Failed ❌");
+    }
+
+  }catch(err){
+    alert("Network error ❌");
+  }
+}
+
+loadUsers();
+</script>
+
+</body>
+</html>

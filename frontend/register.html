@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Capstone — Register</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Segoe UI',Arial,sans-serif;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+  color:white;
+}
+
+.card{
+  background:rgba(255,255,255,.07);
+  backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:20px;
+  padding:40px;
+  width:100%;
+  max-width:420px;
+}
+
+h1{text-align:center;margin-bottom:10px;}
+h1 span{color:#4facfe;}
+
+.form-group{margin-bottom:15px;}
+
+label{
+  font-size:12px;
+  color:rgba(255,255,255,.6);
+}
+
+input{
+  width:100%;
+  padding:12px;
+  margin-top:5px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.2);
+  background:rgba(255,255,255,.05);
+  color:white;
+}
+
+button{
+  width:100%;
+  padding:14px;
+  margin-top:10px;
+  border:none;
+  border-radius:10px;
+  font-weight:bold;
+  cursor:pointer;
+  background:linear-gradient(135deg,#4facfe,#a855f7);
+}
+
+button:disabled{
+  opacity:0.5;
+  cursor:not-allowed;
+}
+
+#status{
+  margin-top:15px;
+  text-align:center;
+  font-size:13px;
+}
+
+.success{color:#34d399;}
+.error{color:#f87171;}
+
+.links{
+  text-align:center;
+  margin-top:20px;
+  font-size:13px;
+}
+
+.links a{
+  color:#4facfe;
+  text-decoration:none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <h1>Cap<span>stone</span></h1>
+
+  <div class="form-group">
+    <label>Username</label>
+    <input type="text" id="username" placeholder="Enter username"/>
+  </div>
+
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" id="email" placeholder="Enter email"/>
+  </div>
+
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Min 6 characters"/>
+  </div>
+
+  <div class="form-group">
+    <label>Confirm Password</label>
+    <input type="password" id="confirmPassword"/>
+  </div>
+
+  <button id="registerBtn" onclick="register()">Create Account</button>
+
+  <div id="status"></div>
+
+  <div class="links">
+    Already have account? <a href="/login">Login</a>
+  </div>
+</div>
+
+<script>
+
+// ✅ AUTO detect API (VERY IMPORTANT)
+const API_URL = window.location.origin;
+
+// If already logged in
+if (localStorage.getItem('token')) {
+  window.location.href = '/';
+}
+
+// Enter key support
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') register();
+});
+
+async function register() {
+  const username = document.getElementById('username').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+  const btn = document.getElementById('registerBtn');
+
+  if (!username || !email || !password || !confirmPassword) {
+    return setStatus('error', '❌ Fill all fields');
+  }
+
+  if (password !== confirmPassword) {
+    return setStatus('error', '❌ Password mismatch');
+  }
+
+  if (password.length < 6) {
+    return setStatus('error', '❌ Password must be 6+ chars');
+  }
+
+  btn.disabled = true;
+  btn.innerText = "Creating...";
+
+  try {
+    const res = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setStatus('success', '✅ Account created!');
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1500);
+    } else {
+      setStatus('error', '❌ ' + (data.message || 'Error'));
+      resetBtn();
+    }
+
+  } catch (err) {
+    setStatus('error', '❌ Network error');
+    resetBtn();
+  }
+
+  function resetBtn(){
+    btn.disabled = false;
+    btn.innerText = "Create Account";
+  }
+}
+
+function setStatus(type, msg){
+  const el = document.getElementById('status');
+  el.className = type;
+  el.innerText = msg;
+}
+
+</script>
+
+</body>
+</html>
