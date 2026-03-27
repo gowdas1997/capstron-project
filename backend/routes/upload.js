@@ -18,7 +18,9 @@ const upload = multer({
 });
 
 router.post('/upload', upload.single('file'), async (req, res) => {
-  console.log("🚀 UPLOAD API HIT");  
+  console.log("🚀 UPLOAD API HIT");
+  console.log("REQ USER:", req.user); // 🔥 DEBUG
+
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded.' });
   }
@@ -52,15 +54,32 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     console.log('[Capstone] DB SUCCESS');
 
     // =========================
-    // 3. Fetch user email
+    // 3. Fetch user email + username
     // =========================
     const userResult = await pool.request()
       .input('id', sql.Int, req.user.id)
-      .query('SELECT email FROM users WHERE id = @id');
+      .query('SELECT email, username FROM users WHERE id = @id');
 
-    const userEmail = userResult.recordset[0]?.email || '';
+    console.log("DB RAW:", userResult.recordset[0]); // 🔥 DEBUG
 
-    console.log("USER EMAIL FROM DB:", userEmail);
+    const userData = userResult.recordset[0] || {};
+
+    const userEmail = userData.email || '';
+    let userName    = userData.username || '';
+
+    console.log("USER EMAIL:", userEmail);
+    console.log("USERNAME FROM DB:", userName);
+
+    // 🔥 MAIN FIX: fallback logic (VERY IMPORTANT)
+    if (!userName || userName.trim() === '') {
+      if (userEmail) {
+        userName = userEmail.split('@')[0]; // fallback from email
+      } else {
+        userName = 'User';
+      }
+    }
+
+    console.log("FINAL USERNAME USED:", userName);
 
     if (!userEmail) {
       console.error("❌ ERROR: userEmail is missing from DB!");
@@ -75,14 +94,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       fileType:   path.extname(req.file.originalname),
       filePath:   fileName,
       uploadedBy: req.user.id,
-      userEmail:  userEmail,   // 🔥 IMPORTANT
+      userEmail:  userEmail,
+      userName:   userName,   // ✅ FINAL FIXED VALUE
       uploadedAt: new Date().toISOString()
     };
 
     console.log("FINAL RECORD SENT TO PUBSUB:", record);
 
     // =========================
-    // 5. Publish to Pub/Sub (FIXED METHOD)
+    // 5. Publish to Pub/Sub
     // =========================
     try {
       const msgId = await pubsub.topic('file-uploaded').publishMessage({

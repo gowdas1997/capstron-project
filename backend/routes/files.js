@@ -7,29 +7,57 @@ require('dotenv').config();
 const storage = new Storage({ projectId: process.env.GCP_PROJECT_ID });
 const bucket  = storage.bucket(process.env.GCS_BUCKET_NAME);
 
-// GET /api/files — list all files from DB
+
+
+// ==============================
+// GET /api/files — ONLY USER FILES
+// ==============================
 router.get('/files', async (req, res) => {
   try {
-    const pool   = await getPool();
+    const pool = await getPool();
+
+    console.log("REQ USER (FILES LIST):", req.user); // 🔥 DEBUG
+
     const result = await pool.request()
-      .query('SELECT * FROM files ORDER BY uploaded_at DESC');
+      .input('userId', sql.Int, req.user.id)
+      .query(`
+        SELECT *
+        FROM files
+        WHERE uploaded_by = @userId
+        ORDER BY uploaded_at DESC
+      `);
+
     res.json(result.recordset);
+
   } catch (err) {
     console.error('[Capstone] Files list error:', err.message);
     res.status(500).json({ message: 'Failed to fetch files.' });
   }
 });
 
-// GET /api/files/:id/download — generate GCS Signed URL (15 min)
+
+
+// ===========================================
+// GET /api/files/:id/download — SECURE DOWNLOAD
+// ===========================================
 router.get('/files/:id/download', async (req, res) => {
   try {
-    const pool   = await getPool();
-    const result = await pool.request()
-      .input('id', sql.Int, parseInt(req.params.id))
-      .query('SELECT * FROM files WHERE id = @id');
+    const pool = await getPool();
 
+    console.log("REQ USER (DOWNLOAD):", req.user); // 🔥 DEBUG
+
+    const result = await pool.request()
+      .input('fileId', sql.Int, parseInt(req.params.id))
+      .input('userId', sql.Int, req.user.id)
+      .query(`
+        SELECT *
+        FROM files
+        WHERE id = @fileId AND uploaded_by = @userId
+      `);
+
+    // 🔒 SECURITY CHECK
     if (result.recordset.length === 0) {
-      return res.status(404).json({ message: 'File not found.' });
+      return res.status(403).json({ message: 'Access denied.' });
     }
 
     const file    = result.recordset[0];
@@ -45,7 +73,7 @@ router.get('/files/:id/download', async (req, res) => {
       expires: Date.now() + 15 * 60 * 1000,
     });
 
-    console.log(`[Capstone] Signed URL generated for: ${file.file_name}`);
+    console.log(`[Capstone] Secure download for user ${req.user.id}: ${file.file_name}`);
 
     res.json({
       downloadUrl: signedUrl,
@@ -60,5 +88,7 @@ router.get('/files/:id/download', async (req, res) => {
     res.status(500).json({ message: 'Download failed.' });
   }
 });
+
+
 
 module.exports = router;
