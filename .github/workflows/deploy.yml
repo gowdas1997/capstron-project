@@ -8,6 +8,8 @@ env:
   REGION: asia-south1
   MIG_NAME: capstone-backend-mig
   FRONTEND_BUCKET: capstone-project-frontend-assets
+  BACKEND_SA: capstone-backend-sa@sudarshanenhub.iam.gserviceaccount.com
+  APP_USER: sudarshandec
 
 jobs:
   deploy:
@@ -46,7 +48,7 @@ jobs:
 
         echo "✅ Frontend deployed!"
 
-    # 5. Create Startup Script (FIXED)
+    # 5. Create Startup Script
     - name: Create startup script
       run: |
         cat > startup-script.sh << 'SCRIPT'
@@ -56,43 +58,65 @@ jobs:
 
         echo "🚀 Starting deployment..."
 
-        # Install dependencies
+        # ── Install dependencies ──
         apt-get update -y
         apt-get install -y git curl
 
-        # Install Node.js
+        # ── Install Node.js 18 ──
         curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
         apt-get install -y nodejs
 
-        # Install PM2
+        # ── Install PM2 globally ──
         npm install -g pm2
 
-        # Clean old app
+        # ── Clean old app ──
         rm -rf /app
 
-        # Clone latest code
+        # ── Clone latest code ──
         git clone https://github.com/gowdas1997/capstron-project.git /app
+
+        # ── Fix ownership — sudarshandec user ಗೆ ಕೊಡು ──
+        chown -R sudarshandec:sudarshandec /app
 
         cd /app/backend
 
-        # Install dependencies
+        # ── Install npm dependencies ──
         npm install
 
-        # Add health check if missing
-        if ! grep -q "/api/health" server.js; then
+        # ── FIX 1: Secret Manager ನಿಂದ .env fetch ──
+        echo "📦 Fetching .env from Secret Manager..."
+        gcloud secrets versions access latest \
+          --secret="capstone-env" \
+          --project=sudarshanenhub > /app/backend/.env
+
+        # .env ownership fix
+        chown sudarshandec:sudarshandec /app/backend/.env
+        chmod 600 /app/backend/.env
+
+        echo "✅ .env loaded!"
+
+        # ── Add health check if missing ──
+        if ! grep -q "/api/health" /app/backend/server.js; then
           echo "Adding health check endpoint..."
-          sed -i "1i app.get('/api/health', (req, res) => res.status(200).send('OK'));" server.js
+          sed -i "1i app.get('/api/health', (req, res) => res.status(200).send('OK'));" /app/backend/server.js
         fi
 
-        # Run migration
-        node migrate.js || true
+        # ── Run DB migration ──
+        cd /app/backend
+        sudo -u sudarshandec node migrate.js || true
 
-        # Start backend
-        pm2 delete backend || true
-        pm2 start server.js --name backend
-        pm2 save
+        # ── FIX 2: sudarshandec user ಆಗಿ PM2 start ──
+        echo "🚀 Starting PM2 as sudarshandec..."
+        sudo -u sudarshandec pm2 delete backend || true
+        sudo -u sudarshandec bash -c "cd /app/backend && pm2 start server.js --name backend"
+        sudo -u sudarshandec pm2 save
 
-        echo "✅ Backend running"
+        # ── FIX 3: VM restart ಆದರೂ auto-start ──
+        echo "⚙️ Setting up PM2 startup for sudarshandec..."
+        sudo -u sudarshandec pm2 startup systemd -u sudarshandec --hp /home/sudarshandec | tail -1 | bash || true
+        sudo -u sudarshandec pm2 save
+
+        echo "✅ Backend running as sudarshandec!"
         SCRIPT
 
     # 6. Get existing template
@@ -105,7 +129,7 @@ jobs:
 
         echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
 
-    # 7. Create new template (FIXED ERROR HERE)
+    # 7. Create new Instance Template with Custom SA
     - name: Create new Instance Template
       run: |
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
@@ -129,10 +153,7 @@ jobs:
           --project=$PROJECT_ID \
           --format="value(properties.networkInterfaces[0].subnetwork)")
 
-        SERVICE_ACCOUNT=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.serviceAccounts[0].email)")
-
+        # ── FIX 4: Custom SA ಬಳಸಿ ──
         gcloud compute instance-templates create $TEMPLATE_NAME \
           --machine-type=$MACHINE_TYPE \
           --image=$IMAGE \
@@ -140,14 +161,14 @@ jobs:
           --subnet=$SUBNET \
           --no-address \
           --tags=backend \
-          --service-account=$SERVICE_ACCOUNT \
+          --service-account=$BACKEND_SA \
           --scopes=https://www.googleapis.com/auth/cloud-platform \
           --metadata-from-file=startup-script=startup-script.sh \
           --project=$PROJECT_ID
 
-        echo "✅ Template Created"
+        echo "✅ Template created with capstone-backend-sa!"
 
-    # 8. Rolling update MIG
+    # 8. Rolling Update MIG
     - name: Rolling Update MIG
       run: |
         gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
