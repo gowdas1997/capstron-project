@@ -58,16 +58,12 @@ jobs:
         gcloud compute url-maps invalidate-cdn-cache capstone-lb \
           --path "/*" \
           --project=$PROJECT_ID \
-          --async
+          --async || true
 
         echo "✅ Frontend deployed successfully!"
 
     # ─────────────────────────────────────────────
     # 5. Create Startup Script
-    # This script runs automatically on EVERY
-    # new VM that Autoscaling creates
-    # migrate.js is idempotent — safe to run
-    # every time (skips if tables already exist)
     # ─────────────────────────────────────────────
     - name: Create startup script
       run: |
@@ -81,28 +77,19 @@ jobs:
 
         echo "🚀 New VM starting — deploying latest code..."
 
-        # Fix permissions
         sudo chown -R cloudbuild:cloudbuild /app || true
-
-        # Fix git safe directory
         git config --global --add safe.directory /app || true
 
-        # Pull latest code from GitHub
         cd /app
         git reset --hard
         git pull origin main
 
-        # Install backend dependencies
         cd /app/backend
         npm install --production
 
-        # Run DB migration
-        # migrate.js is idempotent — safe to run every time
-        # If tables already exist, it skips them automatically
         echo "Running DB migration..."
         node migrate.js
 
-        # Start backend with PM2
         pm2 delete backend || true
         pm2 start server.js --name backend
         pm2 save
@@ -115,8 +102,6 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 6. Get existing Instance Template
-    # MIG is Regional — using --region flag
-    # Template is Global — no region needed
     # ─────────────────────────────────────────────
     - name: Get existing Instance Template
       run: |
@@ -134,10 +119,7 @@ jobs:
         echo "Existing template: $EXISTING_TEMPLATE"
 
     # ─────────────────────────────────────────────
-    # 7. Create NEW Instance Template
-    # Source template is Global
-    # Only startup script is updated
-    # VPC, subnet, firewall — NOT changed
+    # 7. Create NEW Instance Template (FIXED)
     # ─────────────────────────────────────────────
     - name: Create new Instance Template
       run: |
@@ -148,22 +130,18 @@ jobs:
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
         echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
 
-        gcloud compute instance-templates create $TEMPLATE_NAME \
-          --project=$PROJECT_ID \
-          --source-instance-template=$EXISTING_TEMPLATE \
-          --metadata-from-file=startup-script=startup-script.sh
+        # Extract template name from full URL
+        TEMPLATE_BASE=$(basename $EXISTING_TEMPLATE)
+
+        gcloud compute instance-templates create-from-instance-template $TEMPLATE_NAME \
+          --source-instance-template=$TEMPLATE_BASE \
+          --metadata-from-file=startup-script=startup-script.sh \
+          --project=$PROJECT_ID
 
         echo "✅ New template created: $TEMPLATE_NAME"
 
     # ─────────────────────────────────────────────
     # 8. Rolling Update MIG
-    # Zero downtime deployment!
-    # max-surge=1    → create 1 new VM first
-    # max-unavailable=0 → never remove VM
-    #                    until new one is healthy
-    # LB automatically routes to healthy VMs
-    # Regional MIG — VM spins up in any
-    # available zone within asia-south1
     # ─────────────────────────────────────────────
     - name: Rolling Update MIG
       run: |
@@ -183,8 +161,6 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 9. Wait for update to complete
-    # All VMs must be running new template
-    # before we consider deploy done
     # ─────────────────────────────────────────────
     - name: Wait for MIG update
       run: |
@@ -203,9 +179,6 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 10. Cleanup old Instance Templates
-    # Keeps only the latest template
-    # Prevents hitting GCP's 300 template limit
-    # Current template is NOT deleted
     # ─────────────────────────────────────────────
     - name: Cleanup old templates
       run: |
@@ -232,10 +205,7 @@ jobs:
         echo "✅ Cleanup done!"
 
     # ─────────────────────────────────────────────
-    # 11. Verify everything is healthy
-    # LB health check verified automatically
-    # Cloud Monitoring auto picks up new VMs
-    # SQL Server, PubSub, DNS — unchanged
+    # 11. Verify deployment
     # ─────────────────────────────────────────────
     - name: Verify deployment
       run: |
@@ -243,31 +213,19 @@ jobs:
         echo "🔍 Verifying deployment..."
         echo "=========================================="
 
-        echo ""
         echo "--- MIG Status ---"
         gcloud compute instance-groups managed describe $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(name,status.isStable)"
 
-        echo ""
         echo "--- Running VMs ---"
         gcloud compute instance-groups managed list-instances $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(instance,status,health)"
 
-        echo ""
         echo "--- Frontend Bucket ---"
         gsutil ls gs://$FRONTEND_BUCKET/index.html
 
-        echo ""
-        echo "=========================================="
         echo "🎉 Deployment Complete!"
-        echo "=========================================="
-        echo "  Frontend  → GCS ✅"
-        echo "  CDN cache → Cleared ✅"
-        echo "  Backend   → Rolling update ✅"
-        echo "  Old templates → Cleaned up ✅"
-        echo "  LB/CDN/DNS/VPC/SQL → Untouched ✅"
-        echo "=========================================="
