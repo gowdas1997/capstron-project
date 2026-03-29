@@ -116,7 +116,7 @@ jobs:
         echo "Existing template: $EXISTING_TEMPLATE"
 
     # ─────────────────────────────────────────────
-    # 7. Create NEW Instance Template (FINAL FIX)
+    # 7. Create NEW Instance Template (FIXED)
     # ─────────────────────────────────────────────
     - name: Create new Instance Template
       run: |
@@ -164,7 +164,7 @@ jobs:
         echo "✅ New template created: $TEMPLATE_NAME"
 
     # ─────────────────────────────────────────────
-    # 8. Rolling Update MIG
+    # 8. Rolling Update MIG (FIXED)
     # ─────────────────────────────────────────────
     - name: Rolling Update MIG
       run: |
@@ -177,7 +177,7 @@ jobs:
           --project=$PROJECT_ID \
           --region=$REGION \
           --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
-          --max-surge=1 \
+          --max-surge=3 \
           --max-unavailable=0
 
         echo "✅ Rolling update started!"
