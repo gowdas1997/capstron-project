@@ -200,9 +200,10 @@ jobs:
     # ─────────────────────────────────────────────
     # 8. Rolling Update MIG
     # Zero downtime deployment!
-    # max-surge=1    → create 1 new VM first
+    # max-surge=3    → Regional MIG has 3 zones
+    #                  must be >= number of zones
     # max-unavailable=0 → never remove VM
-    #                    until new one is healthy
+    #                     until new one is healthy
     # ─────────────────────────────────────────────
     - name: Rolling Update MIG
       run: |
@@ -215,13 +216,15 @@ jobs:
           --project=$PROJECT_ID \
           --region=$REGION \
           --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
-          --max-surge=1 \
+          --max-surge=3 \
           --max-unavailable=0
 
         echo "✅ Rolling update started!"
 
     # ─────────────────────────────────────────────
     # 9. Wait for update to complete
+    # All VMs must be running new template
+    # before we consider deploy done
     # ─────────────────────────────────────────────
     - name: Wait for MIG update
       run: |
@@ -268,6 +271,9 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 11. Verify deployment
+    # LB health check verified automatically
+    # Cloud Monitoring auto picks up new VMs
+    # SQL Server, PubSub, DNS — unchanged
     # ─────────────────────────────────────────────
     - name: Verify deployment
       run: |
