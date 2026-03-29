@@ -116,9 +116,7 @@ jobs:
     # ─────────────────────────────────────────────
     # 6. Get existing Instance Template
     # MIG is Regional — using --region flag
-    # We copy existing config (VPC, subnet,
-    # firewall, service account) — only
-    # startup script changes
+    # Template is Global — no region needed
     # ─────────────────────────────────────────────
     - name: Get existing Instance Template
       run: |
@@ -137,9 +135,7 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 7. Create NEW Instance Template
-    # Source template is Regional — using
-    # --source-instance-template-region flag
-    # New template is Global — no region needed
+    # Source template is Global
     # Only startup script is updated
     # VPC, subnet, firewall — NOT changed
     # ─────────────────────────────────────────────
@@ -155,7 +151,6 @@ jobs:
         gcloud compute instance-templates create $TEMPLATE_NAME \
           --project=$PROJECT_ID \
           --source-instance-template=$EXISTING_TEMPLATE \
-          --source-instance-template-region=$REGION \
           --metadata-from-file=startup-script=startup-script.sh
 
         echo "✅ New template created: $TEMPLATE_NAME"
@@ -167,7 +162,6 @@ jobs:
     # max-unavailable=0 → never remove VM
     #                    until new one is healthy
     # LB automatically routes to healthy VMs
-    # Autoscaling uses new template for new VMs
     # Regional MIG — VM spins up in any
     # available zone within asia-south1
     # ─────────────────────────────────────────────
