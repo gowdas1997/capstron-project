@@ -2,11 +2,13 @@ name: Deploy Capstone App
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: asia-south1
-  ZONE: asia-south1-b
   MIG_NAME: capstone-backend-mig
   FRONTEND_BUCKET: capstone-project-frontend-assets
   PUBSUB_TOPIC: file-uploaded
@@ -135,7 +137,9 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 7. Create NEW Instance Template
-    # Same config as existing template
+    # Source template is Regional — using
+    # --source-instance-template-region flag
+    # New template is Global — no region needed
     # Only startup script is updated
     # VPC, subnet, firewall — NOT changed
     # ─────────────────────────────────────────────
@@ -151,6 +155,7 @@ jobs:
         gcloud compute instance-templates create $TEMPLATE_NAME \
           --project=$PROJECT_ID \
           --source-instance-template=$EXISTING_TEMPLATE \
+          --source-instance-template-region=$REGION \
           --metadata-from-file=startup-script=startup-script.sh
 
         echo "✅ New template created: $TEMPLATE_NAME"
@@ -163,6 +168,8 @@ jobs:
     #                    until new one is healthy
     # LB automatically routes to healthy VMs
     # Autoscaling uses new template for new VMs
+    # Regional MIG — VM spins up in any
+    # available zone within asia-south1
     # ─────────────────────────────────────────────
     - name: Rolling Update MIG
       run: |
@@ -201,7 +208,37 @@ jobs:
         echo "✅ All VMs updated successfully!"
 
     # ─────────────────────────────────────────────
-    # 10. Verify everything is healthy
+    # 10. Cleanup old Instance Templates
+    # Keeps only the latest template
+    # Prevents hitting GCP's 300 template limit
+    # Current template is NOT deleted
+    # ─────────────────────────────────────────────
+    - name: Cleanup old templates
+      run: |
+        echo "=========================================="
+        echo "🧹 Cleaning up old templates..."
+        echo "=========================================="
+
+        OLD_TEMPLATES=$(gcloud compute instance-templates list \
+          --filter="name~'capstone-template-'" \
+          --format="value(name)" \
+          --project=$PROJECT_ID \
+          | grep -v "$TEMPLATE_NAME" || true)
+
+        if [ -z "$OLD_TEMPLATES" ]; then
+          echo "No old templates to delete."
+        else
+          echo "Deleting old templates:"
+          echo "$OLD_TEMPLATES"
+          echo "$OLD_TEMPLATES" | xargs -r gcloud compute instance-templates delete \
+            --quiet \
+            --project=$PROJECT_ID
+        fi
+
+        echo "✅ Cleanup done!"
+
+    # ─────────────────────────────────────────────
+    # 11. Verify everything is healthy
     # LB health check verified automatically
     # Cloud Monitoring auto picks up new VMs
     # SQL Server, PubSub, DNS — unchanged
@@ -237,5 +274,6 @@ jobs:
         echo "  Frontend  → GCS ✅"
         echo "  CDN cache → Cleared ✅"
         echo "  Backend   → Rolling update ✅"
+        echo "  Old templates → Cleaned up ✅"
         echo "  LB/CDN/DNS/VPC/SQL → Untouched ✅"
         echo "=========================================="
