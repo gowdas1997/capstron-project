@@ -327,9 +327,9 @@
         <table class="admin-table">
           <thead><tr><th>#</th><th>Username</th><th>Email</th><th>Role</th><th>Joined</th><th>Actions</th></tr></thead>
           <tbody>
-            ${data.map(u=>`
+            ${data.map((u, index)=>`
               <tr>
-                <td>${u.id}</td>
+                <td>${index + 1}</td>
                 <td>${u.username}</td>
                 <td>${u.email}</td>
                 <td><span class="role-badge ${u.role==='admin'?'role-admin':'role-user'}">${u.role}</span></td>
@@ -379,7 +379,7 @@
     } catch(e) { alert('Failed to update role.'); }
   }
 
-  // ── File upload ──
+  // ── File list ──
   async function loadFiles(){
     try{
       const res=await fetch(`${API_URL}/api/files`, { headers: {'Authorization':'Bearer '+getToken()} });
@@ -387,7 +387,8 @@
       const data=await res.json();
       const el=document.getElementById('filesList');
       if(!data.length){el.innerHTML='<div class="no-files">No files uploaded yet.</div>';return;}
-      el.innerHTML=`<table class="files-table"><thead><tr><th>#</th><th>File Name</th><th>Size</th><th>Type</th><th>Date</th><th>Action</th></tr></thead><tbody>${data.map(f=>`<tr><td>${f.id}</td><td>${f.file_name}</td><td>${formatSize(f.file_size)}</td><td>${f.file_type.toUpperCase()}</td><td>${new Date(f.uploaded_at).toLocaleDateString()}</td><td><button class="btn-download" onclick="downloadFile(${f.id},'${f.file_name}')">↓ Download</button></td></tr>`).join('')}</tbody></table>`;
+      // ✅ FIX: index+1 ಬಳಸಿ — f.id ಬದಲಾಗಿ
+      el.innerHTML=`<table class="files-table"><thead><tr><th>#</th><th>File Name</th><th>Size</th><th>Type</th><th>Date</th><th>Action</th></tr></thead><tbody>${data.map((f, index)=>`<tr><td>${index + 1}</td><td>${f.file_name}</td><td>${formatSize(f.file_size)}</td><td>${f.file_type.toUpperCase()}</td><td>${new Date(f.uploaded_at).toLocaleDateString()}</td><td><button class="btn-download" onclick="downloadFile(${f.id},'${f.file_name}')">↓ Download</button></td></tr>`).join('')}</tbody></table>`;
     }catch(e){document.getElementById('filesList').innerHTML='<div class="no-files">Failed to load files.</div>';}
   }
 
