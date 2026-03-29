@@ -63,6 +63,7 @@ jobs:
     # ─────────────────────────────────────────────
     # 5. Create Startup Script
     # Runs as root — no user dependency
+    # export HOME=/root — PM2 auto-start on reboot
     # migrate.js is idempotent — safe every time
     # ─────────────────────────────────────────────
     - name: Create startup script
@@ -71,6 +72,7 @@ jobs:
         #!/bin/bash
         set -e
         exec > /var/log/startup-script.log 2>&1
+        export HOME=/root
 
         echo "🚀 Starting deployment..."
 
