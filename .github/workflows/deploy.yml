@@ -1,161 +1,205 @@
 name: Deploy Capstone App
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+workflow_dispatch:
+push:
+branches:
+- main
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: asia-south1
-  MIG_NAME: capstone-backend-mig
-  FRONTEND_BUCKET: capstone-project-frontend-assets
+PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+REGION: asia-south1
+MIG_NAME: capstone-backend-mig
+FRONTEND_BUCKET: capstone-project-frontend-assets
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+deploy:
+runs-on: ubuntu-latest
 
-    steps:
+```
+steps:
 
-    # 1. Checkout code
-    - name: Checkout code
-      uses: actions/checkout@v3
+# ─────────────────────────────────────────────
+# 1. Checkout code
+# ─────────────────────────────────────────────
+- name: Checkout code
+  uses: actions/checkout@v3
 
-    # 2. Authenticate to GCP
-    - name: Authenticate to GCP
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+# ─────────────────────────────────────────────
+# 2. Authenticate to GCP
+# ─────────────────────────────────────────────
+- name: Authenticate to GCP
+  uses: google-github-actions/auth@v2
+  with:
+    credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-    # 3. Setup gcloud
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
+# ─────────────────────────────────────────────
+# 3. Setup gcloud
+# ─────────────────────────────────────────────
+- name: Setup gcloud
+  uses: google-github-actions/setup-gcloud@v2
+  with:
+    project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    # 4. Deploy Frontend
-    - name: Deploy Frontend
-      run: |
-        echo "=========================================="
-        echo "📦 Deploying Frontend to GCS..."
-        echo "=========================================="
+# ─────────────────────────────────────────────
+# 4. Deploy Frontend
+# ─────────────────────────────────────────────
+- name: Deploy Frontend
+  run: |
+    echo "📦 Deploying Frontend..."
 
-        gsutil -m rsync -r -d ./frontend gs://$FRONTEND_BUCKET
+    gsutil -m rsync -r -d ./frontend gs://$FRONTEND_BUCKET
 
-        echo "🔄 Clearing CDN cache..."
-        gcloud compute url-maps invalidate-cdn-cache capstone-lb \
-          --path "/*" \
-          --project=$PROJECT_ID \
-          --async || true
+    echo "🔄 Clearing CDN cache..."
+    gcloud compute url-maps invalidate-cdn-cache capstone-lb \
+      --path "/*" \
+      --project=$PROJECT_ID \
+      --async || true
 
-        echo "✅ Frontend deployed successfully!"
+    echo "✅ Frontend deployed!"
 
-    # 5. Create Startup Script
-    - name: Create startup script
-      run: |
-        cat > startup-script.sh << 'SCRIPT'
-        #!/bin/bash
-        set -e
-        exec > /var/log/startup-script.log 2>&1
+# ─────────────────────────────────────────────
+# 5. Create FULL startup script (FIXED)
+# ─────────────────────────────────────────────
+- name: Create startup script
+  run: |
+    cat > startup-script.sh << 'SCRIPT'
+    #!/bin/bash
+    set -e
+    exec > /var/log/startup-script.log 2>&1
 
-        cd /app
-        git reset --hard
-        git pull origin main
+    echo "🚀 Starting backend setup..."
 
-        cd /app/backend
-        npm install --production
+    # Update system
+    sudo apt update -y
 
-        node migrate.js
+    # Install Node.js + git
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt install -y nodejs git
 
-        pm2 delete backend || true
-        pm2 start server.js --name backend
-        pm2 save
-        SCRIPT
+    # Install PM2
+    sudo npm install -g pm2
 
-    # 6. Get existing template
-    - name: Get existing Instance Template
-      run: |
-        EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
-          describe $MIG_NAME \
-          --region=$REGION \
-          --project=$PROJECT_ID \
-          --format="value(versions[0].instanceTemplate)")
+    # Create app directory
+    sudo mkdir -p /app
+    sudo chown -R $USER:$USER /app
 
-        echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
+    # Clone repo
+    git clone https://github.com/gowdas1997/capstron-project.git /app
 
-    # 7. Create new template (UPDATED FIX)
-    - name: Create new Instance Template
-      run: |
-        TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
-        echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
+    # Go to backend
+    cd /app/backend
 
-        TEMPLATE_BASE=$(basename $EXISTING_TEMPLATE)
+    # Install dependencies
+    npm install
 
-        MACHINE_TYPE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.machineType)")
+    # Run migration (ignore if already done)
+    node migrate.js || true
 
-        IMAGE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.disks[0].initializeParams.sourceImage)")
+    # Start app
+    pm2 start server.js --name backend
+    pm2 save
 
-        NETWORK=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.networkInterfaces[0].network)")
+    # Enable auto-start
+    pm2 startup systemd -u $USER --hp /home/$USER
 
-        SUBNET=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.networkInterfaces[0].subnetwork)")
+    echo "✅ Backend deployed successfully"
+    SCRIPT
 
-        SERVICE_ACCOUNT=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
-          --project=$PROJECT_ID \
-          --format="value(properties.serviceAccounts[0].email)")
+# ─────────────────────────────────────────────
+# 6. Get existing template
+# ─────────────────────────────────────────────
+- name: Get existing Instance Template
+  run: |
+    EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
+      describe $MIG_NAME \
+      --region=$REGION \
+      --project=$PROJECT_ID \
+      --format="value(versions[0].instanceTemplate)")
 
-        gcloud compute instance-templates create $TEMPLATE_NAME \
-          --machine-type=$MACHINE_TYPE \
-          --image=$IMAGE \
-          --network=$NETWORK \
-          --subnet=$SUBNET \
-          --no-address \
-          --tags=backend \
-          --service-account=$SERVICE_ACCOUNT \
-          --scopes=https://www.googleapis.com/auth/cloud-platform \
-          --metadata-from-file=startup-script=startup-script.sh \
-          --project=$PROJECT_ID
+    echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
 
-    # 8. Rolling update
-    - name: Rolling Update MIG
-      run: |
-        gcloud compute instance-groups managed \
-          rolling-action start-update $MIG_NAME \
-          --project=$PROJECT_ID \
-          --region=$REGION \
-          --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
-          --max-surge=3 \
-          --max-unavailable=0
+# ─────────────────────────────────────────────
+# 7. Create new template (FIXED)
+# ─────────────────────────────────────────────
+- name: Create new Instance Template
+  run: |
+    TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
+    echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
 
-    # 9. Wait
-    - name: Wait for MIG update
-      run: |
-        gcloud compute instance-groups managed \
-          wait-until $MIG_NAME \
-          --version-target-reached \
-          --region=$REGION \
-          --project=$PROJECT_ID \
-          --timeout=600 || true
+    TEMPLATE_BASE=$(basename $EXISTING_TEMPLATE)
 
-    # 10. Verify
-    - name: Verify deployment
-      run: |
-        gcloud compute instance-groups managed describe $MIG_NAME \
-          --region=$REGION \
-          --project=$PROJECT_ID \
-          --format="table(name,status.isStable)"
+    MACHINE_TYPE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+      --project=$PROJECT_ID \
+      --format="value(properties.machineType)")
 
-        gcloud compute instance-groups managed list-instances $MIG_NAME \
-          --region=$REGION \
-          --project=$PROJECT_ID \
-          --format="table(instance,status,health)"
+    IMAGE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+      --project=$PROJECT_ID \
+      --format="value(properties.disks[0].initializeParams.sourceImage)")
 
-        echo "🎉 Deployment Complete!"
+    NETWORK=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+      --project=$PROJECT_ID \
+      --format="value(properties.networkInterfaces[0].network)")
+
+    SUBNET=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+      --project=$PROJECT_ID \
+      --format="value(properties.networkInterfaces[0].subnetwork)")
+
+    SERVICE_ACCOUNT=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+      --project=$PROJECT_ID \
+      --format="value(properties.serviceAccounts[0].email)")
+
+    gcloud compute instance-templates create $TEMPLATE_NAME \
+      --machine-type=$MACHINE_TYPE \
+      --image=$IMAGE \
+      --network=$NETWORK \
+      --subnet=$SUBNET \
+      --no-address \
+      --tags=backend \
+      --service-account=$SERVICE_ACCOUNT \
+      --scopes=https://www.googleapis.com/auth/cloud-platform \
+      --metadata-from-file=startup-script=startup-script.sh \
+      --project=$PROJECT_ID
+
+# ─────────────────────────────────────────────
+# 8. Rolling update MIG
+# ─────────────────────────────────────────────
+- name: Rolling Update MIG
+  run: |
+    gcloud compute instance-groups managed \
+      rolling-action start-update $MIG_NAME \
+      --project=$PROJECT_ID \
+      --region=$REGION \
+      --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
+      --max-surge=3 \
+      --max-unavailable=0
+
+# ─────────────────────────────────────────────
+# 9. Wait for update
+# ─────────────────────────────────────────────
+- name: Wait for MIG update
+  run: |
+    gcloud compute instance-groups managed \
+      wait-until $MIG_NAME \
+      --version-target-reached \
+      --region=$REGION \
+      --project=$PROJECT_ID \
+      --timeout=600 || true
+
+# ─────────────────────────────────────────────
+# 10. Verify
+# ─────────────────────────────────────────────
+- name: Verify deployment
+  run: |
+    gcloud compute instance-groups managed describe $MIG_NAME \
+      --region=$REGION \
+      --project=$PROJECT_ID \
+      --format="table(name,status.isStable)"
+
+    gcloud compute instance-groups managed list-instances $MIG_NAME \
+      --region=$REGION \
+      --project=$PROJECT_ID \
+      --format="table(instance,status,health)"
+
+    echo "🎉 Deployment Complete!"
+```
