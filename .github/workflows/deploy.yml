@@ -51,24 +51,13 @@ jobs:
 
         echo "✅ Frontend deployed successfully!"
 
-    # 5. Create Startup Script (WITH LOGGING)
+    # 5. Create Startup Script
     - name: Create startup script
       run: |
-        echo "=========================================="
-        echo "📝 Creating startup script..."
-        echo "=========================================="
-
         cat > startup-script.sh << 'SCRIPT'
         #!/bin/bash
         set -e
-
-        # Log everything
         exec > /var/log/startup-script.log 2>&1
-
-        echo "🚀 Starting VM setup..."
-
-        sudo chown -R cloudbuild:cloudbuild /app || true
-        git config --global --add safe.directory /app || true
 
         cd /app
         git reset --hard
@@ -77,18 +66,12 @@ jobs:
         cd /app/backend
         npm install --production
 
-        echo "Running DB migration..."
         node migrate.js
 
         pm2 delete backend || true
         pm2 start server.js --name backend
         pm2 save
-        pm2 startup || true
-
-        echo "✅ Deployment complete!"
         SCRIPT
-
-        echo "✅ Startup script created!"
 
     # 6. Get existing template
     - name: Get existing Instance Template
@@ -101,7 +84,7 @@ jobs:
 
         echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
 
-    # 7. Create new template (FIXED)
+    # 7. Create new template (UPDATED FIX)
     - name: Create new Instance Template
       run: |
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
@@ -134,12 +117,14 @@ jobs:
           --image=$IMAGE \
           --network=$NETWORK \
           --subnet=$SUBNET \
+          --no-address \
+          --tags=backend \
           --service-account=$SERVICE_ACCOUNT \
           --scopes=https://www.googleapis.com/auth/cloud-platform \
           --metadata-from-file=startup-script=startup-script.sh \
           --project=$PROJECT_ID
 
-    # 8. Rolling update (FIXED for regional MIG)
+    # 8. Rolling update
     - name: Rolling Update MIG
       run: |
         gcloud compute instance-groups managed \
@@ -150,7 +135,7 @@ jobs:
           --max-surge=3 \
           --max-unavailable=0
 
-    # 9. Wait (SAFE + INCREASED TIMEOUT)
+    # 9. Wait
     - name: Wait for MIG update
       run: |
         gcloud compute instance-groups managed \
@@ -163,19 +148,14 @@ jobs:
     # 10. Verify
     - name: Verify deployment
       run: |
-        echo "--- MIG Status ---"
         gcloud compute instance-groups managed describe $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(name,status.isStable)"
 
-        echo "--- Instances ---"
         gcloud compute instance-groups managed list-instances $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(instance,status,health)"
-
-        echo "--- Frontend ---"
-        gsutil ls gs://$FRONTEND_BUCKET/index.html
 
         echo "🎉 Deployment Complete!"
