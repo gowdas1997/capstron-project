@@ -11,7 +11,6 @@ env:
   REGION: asia-south1
   MIG_NAME: capstone-backend-mig
   FRONTEND_BUCKET: capstone-project-frontend-assets
-  PUBSUB_TOPIC: file-uploaded
 
 jobs:
   deploy:
@@ -34,17 +33,19 @@ jobs:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
     # ─────────────────────────────────────────────
-    # 3. Setup gcloud with Project ID
+    # 3. Setup gcloud
     # ─────────────────────────────────────────────
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+    # ✅ FIX: Update gcloud (VERY IMPORTANT)
+    - name: Update gcloud components
+      run: gcloud components update --quiet
+
     # ─────────────────────────────────────────────
-    # 4. Deploy Frontend to GCS
-    # CDN automatically serves updated files
-    # LB/CDN config is NOT touched
+    # 4. Deploy Frontend
     # ─────────────────────────────────────────────
     - name: Deploy Frontend
       run: |
