@@ -61,37 +61,11 @@ jobs:
         echo "✅ Frontend deployed successfully!"
 
     # ─────────────────────────────────────────────
-    # 5. Run DB Migration
-    # Runs ONCE on one existing VM — before
-    # rolling update starts
-    # migrate.js is idempotent — safe to re-run
-    # ─────────────────────────────────────────────
-    - name: Run DB Migration
-      run: |
-        echo "=========================================="
-        echo "🗄️ Running DB Migration..."
-        echo "=========================================="
-
-        INSTANCE=$(gcloud compute instance-groups managed list-instances $MIG_NAME \
-          --zone=$ZONE \
-          --project=$PROJECT_ID \
-          --format="value(instance)" | head -1)
-
-        echo "Running migration on: $INSTANCE"
-
-        gcloud compute ssh $INSTANCE \
-          --zone=$ZONE \
-          --project=$PROJECT_ID \
-          --command="cd /app/backend && node migrate.js"
-
-        echo "✅ DB Migration complete!"
-
-    # ─────────────────────────────────────────────
-    # 6. Create Startup Script
+    # 5. Create Startup Script
     # This script runs automatically on EVERY
     # new VM that Autoscaling creates
-    # NOTE: migrate.js removed from here —
-    # migration runs once in CI/CD (step 5)
+    # migrate.js is idempotent — safe to run
+    # every time (skips if tables already exist)
     # ─────────────────────────────────────────────
     - name: Create startup script
       run: |
@@ -120,6 +94,12 @@ jobs:
         cd /app/backend
         npm install --production
 
+        # Run DB migration
+        # migrate.js is idempotent — safe to run every time
+        # If tables already exist, it skips them automatically
+        echo "Running DB migration..."
+        node migrate.js
+
         # Start backend with PM2
         pm2 delete backend || true
         pm2 start server.js --name backend
@@ -132,7 +112,7 @@ jobs:
         echo "✅ Startup script created!"
 
     # ─────────────────────────────────────────────
-    # 7. Get existing Instance Template
+    # 6. Get existing Instance Template
     # We copy existing config (VPC, subnet,
     # firewall, service account) — only
     # startup script changes
@@ -153,7 +133,7 @@ jobs:
         echo "Existing template: $EXISTING_TEMPLATE"
 
     # ─────────────────────────────────────────────
-    # 8. Create NEW Instance Template
+    # 7. Create NEW Instance Template
     # Same config as existing template
     # Only startup script is updated
     # VPC, subnet, firewall — NOT changed
@@ -175,7 +155,7 @@ jobs:
         echo "✅ New template created: $TEMPLATE_NAME"
 
     # ─────────────────────────────────────────────
-    # 9. Rolling Update MIG
+    # 8. Rolling Update MIG
     # Zero downtime deployment!
     # max-surge=1    → create 1 new VM first
     # max-unavailable=0 → never remove VM
@@ -200,7 +180,7 @@ jobs:
         echo "✅ Rolling update started!"
 
     # ─────────────────────────────────────────────
-    # 10. Wait for update to complete
+    # 9. Wait for update to complete
     # All VMs must be running new template
     # before we consider deploy done
     # ─────────────────────────────────────────────
@@ -220,7 +200,7 @@ jobs:
         echo "✅ All VMs updated successfully!"
 
     # ─────────────────────────────────────────────
-    # 11. Verify everything is healthy
+    # 10. Verify everything is healthy
     # LB health check verified automatically
     # Cloud Monitoring auto picks up new VMs
     # SQL Server, PubSub, DNS — unchanged
@@ -255,7 +235,6 @@ jobs:
         echo "=========================================="
         echo "  Frontend  → GCS ✅"
         echo "  CDN cache → Cleared ✅"
-        echo "  DB Migration → Done ✅"
         echo "  Backend   → Rolling update ✅"
         echo "  LB/CDN/DNS/VPC/SQL → Untouched ✅"
         echo "=========================================="
