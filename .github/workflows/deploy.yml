@@ -40,10 +40,6 @@ jobs:
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    # ✅ FIX: Update gcloud (VERY IMPORTANT)
-    - name: Update gcloud components
-      run: gcloud components update --quiet
-
     # ─────────────────────────────────────────────
     # 4. Deploy Frontend
     # ─────────────────────────────────────────────
@@ -120,7 +116,7 @@ jobs:
         echo "Existing template: $EXISTING_TEMPLATE"
 
     # ─────────────────────────────────────────────
-    # 7. Create NEW Instance Template (FIXED)
+    # 7. Create NEW Instance Template (FINAL FIX)
     # ─────────────────────────────────────────────
     - name: Create new Instance Template
       run: |
@@ -131,11 +127,37 @@ jobs:
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
         echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
 
-        # Extract template name from full URL
         TEMPLATE_BASE=$(basename $EXISTING_TEMPLATE)
 
-        gcloud compute instance-templates create-from-instance-template $TEMPLATE_NAME \
-          --source-instance-template=$TEMPLATE_BASE \
+        echo "Using base template: $TEMPLATE_BASE"
+
+        MACHINE_TYPE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+          --project=$PROJECT_ID \
+          --format="value(properties.machineType)")
+
+        IMAGE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+          --project=$PROJECT_ID \
+          --format="value(properties.disks[0].initializeParams.sourceImage)")
+
+        NETWORK=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+          --project=$PROJECT_ID \
+          --format="value(properties.networkInterfaces[0].network)")
+
+        SUBNET=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+          --project=$PROJECT_ID \
+          --format="value(properties.networkInterfaces[0].subnetwork)")
+
+        SERVICE_ACCOUNT=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
+          --project=$PROJECT_ID \
+          --format="value(properties.serviceAccounts[0].email)")
+
+        gcloud compute instance-templates create $TEMPLATE_NAME \
+          --machine-type=$MACHINE_TYPE \
+          --image=$IMAGE \
+          --network=$NETWORK \
+          --subnet=$SUBNET \
+          --service-account=$SERVICE_ACCOUNT \
+          --scopes=https://www.googleapis.com/auth/cloud-platform \
           --metadata-from-file=startup-script=startup-script.sh \
           --project=$PROJECT_ID
 
@@ -179,34 +201,7 @@ jobs:
         echo "✅ All VMs updated successfully!"
 
     # ─────────────────────────────────────────────
-    # 10. Cleanup old Instance Templates
-    # ─────────────────────────────────────────────
-    - name: Cleanup old templates
-      run: |
-        echo "=========================================="
-        echo "🧹 Cleaning up old templates..."
-        echo "=========================================="
-
-        OLD_TEMPLATES=$(gcloud compute instance-templates list \
-          --filter="name~'capstone-template-'" \
-          --format="value(name)" \
-          --project=$PROJECT_ID \
-          | grep -v "$TEMPLATE_NAME" || true)
-
-        if [ -z "$OLD_TEMPLATES" ]; then
-          echo "No old templates to delete."
-        else
-          echo "Deleting old templates:"
-          echo "$OLD_TEMPLATES"
-          echo "$OLD_TEMPLATES" | xargs -r gcloud compute instance-templates delete \
-            --quiet \
-            --project=$PROJECT_ID
-        fi
-
-        echo "✅ Cleanup done!"
-
-    # ─────────────────────────────────────────────
-    # 11. Verify deployment
+    # 10. Verify deployment
     # ─────────────────────────────────────────────
     - name: Verify deployment
       run: |
