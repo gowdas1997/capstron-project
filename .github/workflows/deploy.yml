@@ -3,11 +3,21 @@ name: Deploy Capstone App
 on:
   workflow_dispatch:
 
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: asia-south1
+  ZONE: asia-south1-b
+  MIG_NAME: capstone-backend-mig
+  FRONTEND_BUCKET: capstone-project-frontend-assets
+  PUBSUB_TOPIC: file-uploaded
+  FUNCTION_NAME: sendEmail
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+
     # ─────────────────────────────────────────────
     # 1. Checkout code
     # ─────────────────────────────────────────────
@@ -23,48 +33,248 @@ jobs:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
     # ─────────────────────────────────────────────
-    # 3. Setup gcloud
+    # 3. Setup gcloud with Project ID
     # ─────────────────────────────────────────────
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
 
     # ─────────────────────────────────────────────
-    # 4. Deploy Backend
-    # ─────────────────────────────────────────────
-    - name: Deploy Backend
-      run: |
-        gcloud compute ssh cloudbuild@capstone-backend-mig-4rd7 \
-          --zone=asia-south1-b \
-          --tunnel-through-iap \
-          --command="
-            set -e
-            echo 'Fixing permissions...'
-            sudo chown -R cloudbuild:cloudbuild /app || true
-            echo 'Fixing git safe directory...'
-            git config --global --add safe.directory /app || true
-            echo 'Navigating to app...'
-            cd /app
-            echo 'Resetting local changes...'
-            git reset --hard
-            echo 'Pulling latest code...'
-            git pull origin main
-            echo 'Installing dependencies...'
-            cd /app/backend
-            npm install
-            echo 'Running migration (safe - IF NOT EXISTS inside)...'
-            node migrate.js
-            echo 'Restarting backend...'
-            pm2 delete backend || true
-            pm2 start server.js --name backend
-            pm2 save
-            echo 'Backend deployed successfully ✅'
-          "
-
-    # ─────────────────────────────────────────────
-    # 6. Deploy Frontend to GCS
+    # 4. Deploy Frontend to GCS
+    # CDN automatically serves updated files
+    # LB/CDN config is NOT touched
     # ─────────────────────────────────────────────
     - name: Deploy Frontend
       run: |
-        echo "Deploying frontend to GCS..."
-        gsutil -m rsync -r -d ./frontend gs://capstone-project-frontend-assets
-        echo "Frontend deployed successfully ✅"
+        echo "=========================================="
+        echo "📦 Deploying Frontend to GCS..."
+        echo "=========================================="
+
+        gsutil -m rsync -r -d ./frontend gs://$FRONTEND_BUCKET
+
+        echo "🔄 Clearing CDN cache..."
+        gcloud compute url-maps invalidate-cdn-cache capstone-lb \
+          --path "/*" \
+          --project=$PROJECT_ID \
+          --async
+
+        echo "✅ Frontend deployed successfully!"
+
+    # ─────────────────────────────────────────────
+    # 5. Deploy Cloud Function
+    # PubSub topic already exists — NOT touched
+    # EMAIL credentials from GitHub Secrets
+    # ─────────────────────────────────────────────
+    - name: Deploy Cloud Function
+      run: |
+        echo "=========================================="
+        echo "⚡ Deploying Cloud Function..."
+        echo "=========================================="
+
+        # Create .env.yaml from GitHub Secrets
+        # (never hardcode credentials in code!)
+        cat > ./functions/send-email/.env.yaml << EOF
+        EMAIL_USER: "${{ secrets.EMAIL_USER }}"
+        EMAIL_PASS: "${{ secrets.EMAIL_PASS }}"
+        EOF
+
+        gcloud functions deploy $FUNCTION_NAME \
+          --project=$PROJECT_ID \
+          --region=$REGION \
+          --runtime=nodejs22 \
+          --trigger-topic=$PUBSUB_TOPIC \
+          --source=./functions/send-email \
+          --entry-point=sendEmail \
+          --env-vars-file=./functions/send-email/.env.yaml \
+          --memory=256MB \
+          --timeout=60s \
+          --gen2 \
+          --quiet
+
+        echo "✅ Cloud Function deployed successfully!"
+
+    # ─────────────────────────────────────────────
+    # 6. Create Startup Script
+    # This script runs automatically on EVERY
+    # new VM that Autoscaling creates
+    # ─────────────────────────────────────────────
+    - name: Create startup script
+      run: |
+        echo "=========================================="
+        echo "📝 Creating startup script..."
+        echo "=========================================="
+
+        cat > startup-script.sh << 'SCRIPT'
+        #!/bin/bash
+        set -e
+
+        echo "🚀 New VM starting — deploying latest code..."
+
+        # Fix permissions
+        sudo chown -R cloudbuild:cloudbuild /app || true
+
+        # Fix git safe directory
+        git config --global --add safe.directory /app || true
+
+        # Pull latest code from GitHub
+        cd /app
+        git reset --hard
+        git pull origin main
+
+        # Install backend dependencies
+        cd /app/backend
+        npm install --production
+
+        # Run DB migration
+        # SQL Server is in same VPC — auto accessible
+        echo "Running DB migration..."
+        node migrate.js
+
+        # Start backend with PM2
+        pm2 delete backend || true
+        pm2 start server.js --name backend
+        pm2 save
+        pm2 startup || true
+
+        echo "✅ VM deployment complete!"
+        SCRIPT
+
+        echo "✅ Startup script created!"
+
+    # ─────────────────────────────────────────────
+    # 7. Get existing Instance Template
+    # We copy existing config (VPC, subnet,
+    # firewall, service account) — only
+    # startup script changes
+    # ─────────────────────────────────────────────
+    - name: Get existing Instance Template
+      run: |
+        echo "=========================================="
+        echo "🔍 Getting existing template config..."
+        echo "=========================================="
+
+        EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
+          describe $MIG_NAME \
+          --zone=$ZONE \
+          --project=$PROJECT_ID \
+          --format="value(versions[0].instanceTemplate)")
+
+        echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
+        echo "Existing template: $EXISTING_TEMPLATE"
+
+    # ─────────────────────────────────────────────
+    # 8. Create NEW Instance Template
+    # Same config as existing template
+    # Only startup script is updated
+    # VPC, subnet, firewall — NOT changed
+    # ─────────────────────────────────────────────
+    - name: Create new Instance Template
+      run: |
+        echo "=========================================="
+        echo "📋 Creating new Instance Template..."
+        echo "=========================================="
+
+        # Unique name using run number
+        TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
+        echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
+
+        gcloud compute instance-templates create $TEMPLATE_NAME \
+          --project=$PROJECT_ID \
+          --source-instance-template=$EXISTING_TEMPLATE \
+          --metadata-from-file=startup-script=startup-script.sh
+
+        echo "✅ New template created: $TEMPLATE_NAME"
+
+    # ─────────────────────────────────────────────
+    # 9. Rolling Update MIG
+    # Zero downtime deployment!
+    # max-surge=1    → create 1 new VM first
+    # max-unavailable=0 → never remove VM
+    #                    until new one is healthy
+    # LB automatically routes to healthy VMs
+    # Autoscaling uses new template for new VMs
+    # ─────────────────────────────────────────────
+    - name: Rolling Update MIG
+      run: |
+        echo "=========================================="
+        echo "🔄 Starting Rolling Update..."
+        echo "=========================================="
+
+        gcloud compute instance-groups managed \
+          rolling-action start-update $MIG_NAME \
+          --project=$PROJECT_ID \
+          --zone=$ZONE \
+          --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
+          --max-surge=1 \
+          --max-unavailable=0
+
+        echo "✅ Rolling update started!"
+
+    # ─────────────────────────────────────────────
+    # 10. Wait for update to complete
+    # All VMs must be running new template
+    # before we consider deploy done
+    # ─────────────────────────────────────────────
+    - name: Wait for MIG update
+      run: |
+        echo "=========================================="
+        echo "⏳ Waiting for all VMs to update..."
+        echo "=========================================="
+
+        gcloud compute instance-groups managed \
+          wait-until $MIG_NAME \
+          --version-target-reached \
+          --zone=$ZONE \
+          --project=$PROJECT_ID \
+          --timeout=300
+
+        echo "✅ All VMs updated successfully!"
+
+    # ─────────────────────────────────────────────
+    # 11. Verify everything is healthy
+    # LB health check verified automatically
+    # Cloud Monitoring auto picks up new VMs
+    # SQL Server, PubSub, DNS — unchanged
+    # ─────────────────────────────────────────────
+    - name: Verify deployment
+      run: |
+        echo "=========================================="
+        echo "🔍 Verifying deployment..."
+        echo "=========================================="
+
+        echo ""
+        echo "--- MIG Status ---"
+        gcloud compute instance-groups managed describe $MIG_NAME \
+          --zone=$ZONE \
+          --project=$PROJECT_ID \
+          --format="table(name,status.isStable)"
+
+        echo ""
+        echo "--- Running VMs ---"
+        gcloud compute instance-groups managed list-instances $MIG_NAME \
+          --zone=$ZONE \
+          --project=$PROJECT_ID \
+          --format="table(instance,status,health)"
+
+        echo ""
+        echo "--- Cloud Function Status ---"
+        gcloud functions describe $FUNCTION_NAME \
+          --region=$REGION \
+          --project=$PROJECT_ID \
+          --format="table(name,state,updateTime)"
+
+        echo ""
+        echo "--- Frontend Bucket ---"
+        gsutil ls gs://$FRONTEND_BUCKET/index.html
+
+        echo ""
+        echo "=========================================="
+        echo "🎉 Deployment Complete!"
+        echo "=========================================="
+        echo "  Frontend  → GCS ✅"
+        echo "  CDN cache → Cleared ✅"
+        echo "  Function  → Updated ✅"
+        echo "  Backend   → Rolling update ✅"
+        echo "  LB/CDN/DNS/VPC/SQL → Untouched ✅"
+        echo "=========================================="
