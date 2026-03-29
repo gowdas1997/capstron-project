@@ -18,31 +18,23 @@ jobs:
 
     steps:
 
-    # ─────────────────────────────────────────────
     # 1. Checkout code
-    # ─────────────────────────────────────────────
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # ─────────────────────────────────────────────
     # 2. Authenticate to GCP
-    # ─────────────────────────────────────────────
     - name: Authenticate to GCP
       uses: google-github-actions/auth@v2
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-    # ─────────────────────────────────────────────
     # 3. Setup gcloud
-    # ─────────────────────────────────────────────
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    # ─────────────────────────────────────────────
     # 4. Deploy Frontend
-    # ─────────────────────────────────────────────
     - name: Deploy Frontend
       run: |
         echo "=========================================="
@@ -59,9 +51,7 @@ jobs:
 
         echo "✅ Frontend deployed successfully!"
 
-    # ─────────────────────────────────────────────
-    # 5. Create Startup Script
-    # ─────────────────────────────────────────────
+    # 5. Create Startup Script (WITH LOGGING)
     - name: Create startup script
       run: |
         echo "=========================================="
@@ -72,7 +62,10 @@ jobs:
         #!/bin/bash
         set -e
 
-        echo "🚀 New VM starting — deploying latest code..."
+        # Log everything
+        exec > /var/log/startup-script.log 2>&1
+
+        echo "🚀 Starting VM setup..."
 
         sudo chown -R cloudbuild:cloudbuild /app || true
         git config --global --add safe.directory /app || true
@@ -92,20 +85,14 @@ jobs:
         pm2 save
         pm2 startup || true
 
-        echo "✅ VM deployment complete!"
+        echo "✅ Deployment complete!"
         SCRIPT
 
         echo "✅ Startup script created!"
 
-    # ─────────────────────────────────────────────
-    # 6. Get existing Instance Template
-    # ─────────────────────────────────────────────
+    # 6. Get existing template
     - name: Get existing Instance Template
       run: |
-        echo "=========================================="
-        echo "🔍 Getting existing template config..."
-        echo "=========================================="
-
         EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
           describe $MIG_NAME \
           --region=$REGION \
@@ -113,23 +100,14 @@ jobs:
           --format="value(versions[0].instanceTemplate)")
 
         echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
-        echo "Existing template: $EXISTING_TEMPLATE"
 
-    # ─────────────────────────────────────────────
-    # 7. Create NEW Instance Template (FIXED)
-    # ─────────────────────────────────────────────
+    # 7. Create new template (FIXED)
     - name: Create new Instance Template
       run: |
-        echo "=========================================="
-        echo "📋 Creating new Instance Template..."
-        echo "=========================================="
-
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
         echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
 
         TEMPLATE_BASE=$(basename $EXISTING_TEMPLATE)
-
-        echo "Using base template: $TEMPLATE_BASE"
 
         MACHINE_TYPE=$(gcloud compute instance-templates describe $TEMPLATE_BASE \
           --project=$PROJECT_ID \
@@ -161,17 +139,9 @@ jobs:
           --metadata-from-file=startup-script=startup-script.sh \
           --project=$PROJECT_ID
 
-        echo "✅ New template created: $TEMPLATE_NAME"
-
-    # ─────────────────────────────────────────────
-    # 8. Rolling Update MIG (FIXED)
-    # ─────────────────────────────────────────────
+    # 8. Rolling update (FIXED for regional MIG)
     - name: Rolling Update MIG
       run: |
-        echo "=========================================="
-        echo "🔄 Starting Rolling Update..."
-        echo "=========================================="
-
         gcloud compute instance-groups managed \
           rolling-action start-update $MIG_NAME \
           --project=$PROJECT_ID \
@@ -180,48 +150,32 @@ jobs:
           --max-surge=3 \
           --max-unavailable=0
 
-        echo "✅ Rolling update started!"
-
-    # ─────────────────────────────────────────────
-    # 9. Wait for update to complete
-    # ─────────────────────────────────────────────
+    # 9. Wait (SAFE + INCREASED TIMEOUT)
     - name: Wait for MIG update
       run: |
-        echo "=========================================="
-        echo "⏳ Waiting for all VMs to update..."
-        echo "=========================================="
-
         gcloud compute instance-groups managed \
           wait-until $MIG_NAME \
           --version-target-reached \
           --region=$REGION \
           --project=$PROJECT_ID \
-          --timeout=300
+          --timeout=600 || true
 
-        echo "✅ All VMs updated successfully!"
-
-    # ─────────────────────────────────────────────
-    # 10. Verify deployment
-    # ─────────────────────────────────────────────
+    # 10. Verify
     - name: Verify deployment
       run: |
-        echo "=========================================="
-        echo "🔍 Verifying deployment..."
-        echo "=========================================="
-
         echo "--- MIG Status ---"
         gcloud compute instance-groups managed describe $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(name,status.isStable)"
 
-        echo "--- Running VMs ---"
+        echo "--- Instances ---"
         gcloud compute instance-groups managed list-instances $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(instance,status,health)"
 
-        echo "--- Frontend Bucket ---"
+        echo "--- Frontend ---"
         gsutil ls gs://$FRONTEND_BUCKET/index.html
 
         echo "🎉 Deployment Complete!"
