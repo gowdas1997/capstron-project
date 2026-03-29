@@ -113,6 +113,7 @@ jobs:
 
     # ─────────────────────────────────────────────
     # 6. Get existing Instance Template
+    # MIG is Regional — using --region flag
     # We copy existing config (VPC, subnet,
     # firewall, service account) — only
     # startup script changes
@@ -125,7 +126,7 @@ jobs:
 
         EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
           describe $MIG_NAME \
-          --zone=$ZONE \
+          --region=$REGION \
           --project=$PROJECT_ID \
           --format="value(versions[0].instanceTemplate)")
 
@@ -172,7 +173,7 @@ jobs:
         gcloud compute instance-groups managed \
           rolling-action start-update $MIG_NAME \
           --project=$PROJECT_ID \
-          --zone=$ZONE \
+          --region=$REGION \
           --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
           --max-surge=1 \
           --max-unavailable=0
@@ -193,7 +194,7 @@ jobs:
         gcloud compute instance-groups managed \
           wait-until $MIG_NAME \
           --version-target-reached \
-          --zone=$ZONE \
+          --region=$REGION \
           --project=$PROJECT_ID \
           --timeout=300
 
@@ -214,14 +215,14 @@ jobs:
         echo ""
         echo "--- MIG Status ---"
         gcloud compute instance-groups managed describe $MIG_NAME \
-          --zone=$ZONE \
+          --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(name,status.isStable)"
 
         echo ""
         echo "--- Running VMs ---"
         gcloud compute instance-groups managed list-instances $MIG_NAME \
-          --zone=$ZONE \
+          --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(instance,status,health)"
 
