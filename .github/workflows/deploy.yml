@@ -2,6 +2,9 @@ name: Deploy Capstone App
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -9,7 +12,6 @@ env:
   MIG_NAME: capstone-backend-mig
   FRONTEND_BUCKET: capstone-project-frontend-assets
   BACKEND_SA: capstone-backend-sa@sudarshanenhub.iam.gserviceaccount.com
-  APP_USER: sudarshandec
 
 jobs:
   deploy:
@@ -17,23 +19,33 @@ jobs:
 
     steps:
 
+    # ─────────────────────────────────────────────
     # 1. Checkout code
+    # ─────────────────────────────────────────────
     - name: Checkout code
       uses: actions/checkout@v3
 
+    # ─────────────────────────────────────────────
     # 2. Authenticate to GCP
+    # ─────────────────────────────────────────────
     - name: Authenticate to GCP
       uses: google-github-actions/auth@v2
       with:
         credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
+    # ─────────────────────────────────────────────
     # 3. Setup gcloud
+    # ─────────────────────────────────────────────
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-    # 4. Deploy Frontend
+    # ─────────────────────────────────────────────
+    # 4. Deploy Frontend to GCS
+    # CDN automatically serves updated files
+    # LB/CDN config is NOT touched
+    # ─────────────────────────────────────────────
     - name: Deploy Frontend
       run: |
         echo "📦 Deploying Frontend..."
@@ -48,7 +60,11 @@ jobs:
 
         echo "✅ Frontend deployed!"
 
+    # ─────────────────────────────────────────────
     # 5. Create Startup Script
+    # Runs as root — no user dependency
+    # migrate.js is idempotent — safe every time
+    # ─────────────────────────────────────────────
     - name: Create startup script
       run: |
         cat > startup-script.sh << 'SCRIPT'
@@ -75,24 +91,17 @@ jobs:
         # ── Clone latest code ──
         git clone https://github.com/gowdas1997/capstron-project.git /app
 
-        # ── Fix ownership — sudarshandec user ಗೆ ಕೊಡು ──
-        chown -R sudarshandec:sudarshandec /app
-
         cd /app/backend
 
         # ── Install npm dependencies ──
         npm install
 
-        # ── FIX 1: Secret Manager ನಿಂದ .env fetch ──
+        # ── Fetch .env from Secret Manager ──
         echo "📦 Fetching .env from Secret Manager..."
         gcloud secrets versions access latest \
           --secret="capstone-env" \
           --project=sudarshanenhub > /app/backend/.env
-
-        # .env ownership fix
-        chown sudarshandec:sudarshandec /app/backend/.env
         chmod 600 /app/backend/.env
-
         echo "✅ .env loaded!"
 
         # ── Add health check if missing ──
@@ -101,37 +110,58 @@ jobs:
           sed -i "1i app.get('/api/health', (req, res) => res.status(200).send('OK'));" /app/backend/server.js
         fi
 
-        # ── Run DB migration ──
-        cd /app/backend
-        sudo -u sudarshandec node migrate.js || true
+        # ── Run DB migration as root ──
+        echo "🗄️ Running DB migration..."
+        node /app/backend/migrate.js || true
 
-        # ── FIX 2: sudarshandec user ಆಗಿ PM2 start ──
-        echo "🚀 Starting PM2 as sudarshandec..."
-        sudo -u sudarshandec pm2 delete backend || true
-        sudo -u sudarshandec bash -c "cd /app/backend && pm2 start server.js --name backend"
-        sudo -u sudarshandec pm2 save
+        # ── Start PM2 as root ──
+        echo "🚀 Starting PM2..."
+        pm2 delete backend || true
+        pm2 start /app/backend/server.js --name backend
+        pm2 save
 
-        # ── FIX 3: VM restart ಆದರೂ auto-start ──
-        echo "⚙️ Setting up PM2 startup for sudarshandec..."
-        sudo -u sudarshandec pm2 startup systemd -u sudarshandec --hp /home/sudarshandec | tail -1 | bash || true
-        sudo -u sudarshandec pm2 save
+        # ── Auto-start on VM reboot ──
+        echo "⚙️ Setting up PM2 startup..."
+        pm2 startup systemd | tail -1 | bash || true
+        pm2 save
 
-        echo "✅ Backend running as sudarshandec!"
+        echo "✅ Backend running!"
         SCRIPT
 
-    # 6. Get existing template
+        echo "✅ Startup script created!"
+
+    # ─────────────────────────────────────────────
+    # 6. Get existing Instance Template
+    # MIG is Regional — using --region flag
+    # Template is Global
+    # ─────────────────────────────────────────────
     - name: Get existing Instance Template
       run: |
-        EXISTING_TEMPLATE=$(gcloud compute instance-groups managed describe $MIG_NAME \
+        echo "=========================================="
+        echo "🔍 Getting existing template config..."
+        echo "=========================================="
+
+        EXISTING_TEMPLATE=$(gcloud compute instance-groups managed \
+          describe $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="value(versions[0].instanceTemplate)")
 
         echo "EXISTING_TEMPLATE=$EXISTING_TEMPLATE" >> $GITHUB_ENV
+        echo "Existing template: $EXISTING_TEMPLATE"
 
-    # 7. Create new Instance Template with Custom SA
+    # ─────────────────────────────────────────────
+    # 7. Create NEW Instance Template
+    # Copies config from existing Global template
+    # Only startup script is updated
+    # Custom SA — capstone-backend-sa
+    # ─────────────────────────────────────────────
     - name: Create new Instance Template
       run: |
+        echo "=========================================="
+        echo "📋 Creating new Instance Template..."
+        echo "=========================================="
+
         TEMPLATE_NAME="capstone-template-${{ github.run_number }}"
         echo "TEMPLATE_NAME=$TEMPLATE_NAME" >> $GITHUB_ENV
 
@@ -153,7 +183,6 @@ jobs:
           --project=$PROJECT_ID \
           --format="value(properties.networkInterfaces[0].subnetwork)")
 
-        # ── FIX 4: Custom SA ಬಳಸಿ ──
         gcloud compute instance-templates create $TEMPLATE_NAME \
           --machine-type=$MACHINE_TYPE \
           --image=$IMAGE \
@@ -166,40 +195,111 @@ jobs:
           --metadata-from-file=startup-script=startup-script.sh \
           --project=$PROJECT_ID
 
-        echo "✅ Template created with capstone-backend-sa!"
+        echo "✅ Template created: $TEMPLATE_NAME"
 
+    # ─────────────────────────────────────────────
     # 8. Rolling Update MIG
+    # Zero downtime deployment!
+    # max-surge=1    → create 1 new VM first
+    # max-unavailable=0 → never remove VM
+    #                    until new one is healthy
+    # ─────────────────────────────────────────────
     - name: Rolling Update MIG
       run: |
-        gcloud compute instance-groups managed rolling-action start-update $MIG_NAME \
+        echo "=========================================="
+        echo "🔄 Starting Rolling Update..."
+        echo "=========================================="
+
+        gcloud compute instance-groups managed \
+          rolling-action start-update $MIG_NAME \
           --project=$PROJECT_ID \
           --region=$REGION \
           --version=template=projects/$PROJECT_ID/global/instanceTemplates/$TEMPLATE_NAME \
-          --max-surge=3 \
+          --max-surge=1 \
           --max-unavailable=0
 
-        echo "🚀 Rolling update started"
+        echo "✅ Rolling update started!"
 
-    # 9. Wait for update
+    # ─────────────────────────────────────────────
+    # 9. Wait for update to complete
+    # ─────────────────────────────────────────────
     - name: Wait for MIG update
       run: |
-        gcloud compute instance-groups managed wait-until $MIG_NAME \
+        echo "=========================================="
+        echo "⏳ Waiting for all VMs to update..."
+        echo "=========================================="
+
+        gcloud compute instance-groups managed \
+          wait-until $MIG_NAME \
           --version-target-reached \
           --region=$REGION \
           --project=$PROJECT_ID \
-          --timeout=600 || true
+          --timeout=600
 
-    # 10. Verify deployment
+        echo "✅ All VMs updated successfully!"
+
+    # ─────────────────────────────────────────────
+    # 10. Cleanup old Instance Templates
+    # Keeps only the latest template
+    # Prevents hitting GCP's 300 template limit
+    # ─────────────────────────────────────────────
+    - name: Cleanup old templates
+      run: |
+        echo "=========================================="
+        echo "🧹 Cleaning up old templates..."
+        echo "=========================================="
+
+        OLD_TEMPLATES=$(gcloud compute instance-templates list \
+          --filter="name~'capstone-template-'" \
+          --format="value(name)" \
+          --project=$PROJECT_ID \
+          | grep -v "$TEMPLATE_NAME" || true)
+
+        if [ -z "$OLD_TEMPLATES" ]; then
+          echo "No old templates to delete."
+        else
+          echo "Deleting: $OLD_TEMPLATES"
+          echo "$OLD_TEMPLATES" | xargs -r gcloud compute instance-templates delete \
+            --quiet \
+            --project=$PROJECT_ID
+        fi
+
+        echo "✅ Cleanup done!"
+
+    # ─────────────────────────────────────────────
+    # 11. Verify deployment
+    # ─────────────────────────────────────────────
     - name: Verify deployment
       run: |
+        echo "=========================================="
+        echo "🔍 Verifying deployment..."
+        echo "=========================================="
+
+        echo ""
+        echo "--- MIG Status ---"
         gcloud compute instance-groups managed describe $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(name,status.isStable)"
 
+        echo ""
+        echo "--- Running VMs ---"
         gcloud compute instance-groups managed list-instances $MIG_NAME \
           --region=$REGION \
           --project=$PROJECT_ID \
           --format="table(instance,status,health)"
 
+        echo ""
+        echo "--- Frontend Bucket ---"
+        gsutil ls gs://$FRONTEND_BUCKET/index.html
+
+        echo ""
+        echo "=========================================="
         echo "🎉 Deployment Complete!"
+        echo "=========================================="
+        echo "  Frontend  → GCS ✅"
+        echo "  CDN cache → Cleared ✅"
+        echo "  Backend   → Rolling update ✅"
+        echo "  Old templates → Cleaned up ✅"
+        echo "  LB/CDN/DNS/VPC/SQL → Untouched ✅"
+        echo "=========================================="
